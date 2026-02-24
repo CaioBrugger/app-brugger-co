@@ -1,3 +1,7 @@
+// Este arquivo é usado como referência pelo scripts/setup.ps1.
+// O vite.config.js ativo é gerado em %LOCALAPPDATA%\brugger-co-config\vite.config.js
+// Execute `npm run setup` uma vez para configurar este projeto no seu PC.
+
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 

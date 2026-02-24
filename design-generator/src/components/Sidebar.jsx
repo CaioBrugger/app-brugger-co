@@ -25,41 +25,6 @@ const tools = [
         )
     },
     {
-        path: '/agents',
-        label: 'Agentes IA',
-        icon: (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2a4 4 0 014 4c0 1.95-1.4 3.57-3.25 3.92L12 10V8a2 2 0 10-2-2H8a4 4 0 014-4z" />
-                <path d="M9 12H5a2 2 0 00-2 2v4a2 2 0 002 2h4" />
-                <path d="M15 12h4a2 2 0 012 2v4a2 2 0 01-2 2h-4" />
-                <path d="M12 16v6" />
-                <circle cx="12" cy="12" r="2" />
-            </svg>
-        )
-    },
-    {
-        path: '/skills',
-        label: 'Skills',
-        icon: (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
-            </svg>
-        )
-    },
-    {
-        path: '/workflows',
-        label: 'Workflows',
-        icon: (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="16 3 21 3 21 8" />
-                <line x1="4" y1="20" x2="21" y2="3" />
-                <polyline points="21 16 21 21 16 21" />
-                <line x1="15" y1="15" x2="21" y2="21" />
-                <line x1="4" y1="4" x2="9" y2="9" />
-            </svg>
-        )
-    },
-    {
         path: '/design-system',
         label: 'Design System',
         icon: (
@@ -73,13 +38,13 @@ const tools = [
         )
     },
     {
-        path: '/extractor',
-        label: 'Extrator DS',
+        path: '/products',
+        label: 'Produtos',
         icon: (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 22l1-1h3l9-9" />
-                <path d="M15 12l-3-3" />
-                <path d="M17.5 2.5a2.12 2.12 0 013 3L14 12l-4 1 1-4z" />
+                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                <line x1="12" y1="22.08" x2="12" y2="12" />
             </svg>
         )
     }
