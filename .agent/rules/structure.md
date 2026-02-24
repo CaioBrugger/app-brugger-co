@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # 🏗️ STRUCTURE — Estrutura de Landing Page para Infoprodutos Bíblicos
 
 > Guia completo de estrutura e seções para replicar (e melhorar) as landing pages validadas.
@@ -375,7 +379,7 @@ Valor total dos bônus: +R$XXX
 Tudo GRÁTIS hoje
 ```
 
-**SUPER BÔNUS (opcional mas recomendado):**
+**SUPER BÔNUS (🚨 IMPORTANTE - SEMPRE CRIAR):**
 - Card especial maior, separado dos demais
 - Algo de alto valor percebido (ex: videoaulas, guia complementar extenso)
 - Formato destacado com visual diferente

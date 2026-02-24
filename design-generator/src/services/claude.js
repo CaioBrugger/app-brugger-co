@@ -1,31 +1,34 @@
-const CLAUDE_API_KEY = import.meta.env.VITE_CLAUDE_API_KEY;
-const CLAUDE_MODEL = 'claude-opus-4-6-20250715';
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_CLAUDE_API_KEY;
+const CLAUDE_MODEL = 'anthropic/claude-3.5-sonnet';
 
 async function callClaude(systemPrompt, userPrompt) {
-    const response = await fetch('/api/claude/v1/messages', {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'x-api-key': CLAUDE_API_KEY,
-            'anthropic-version': '2023-06-01'
+            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+            'HTTP-Referer': 'http://localhost:3000',
+            'X-Title': 'Brugger CO Toolbox'
         },
         body: JSON.stringify({
             model: CLAUDE_MODEL,
             max_tokens: 8192,
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userPrompt }]
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ]
         })
     });
 
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        console.error('[Claude] API Error:', err);
-        throw new Error(err.error?.message || `Erro na API Claude: ${response.status}`);
+        console.error('[OpenRouter Claude] API Error:', err);
+        throw new Error(err.error?.message || `Erro na API OpenRouter: ${response.status}`);
     }
 
     const data = await response.json();
-    const text = data.content?.[0]?.text;
-    if (!text) throw new Error('Resposta vazia do Claude');
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('Resposta vazia do Claude via OpenRouter');
     return text;
 }
 
@@ -122,6 +125,79 @@ Format everything with clear headings, tables, and CSS code blocks. Be extremely
 
     return callClaude(systemPrompt,
         `Analyze the following and extract a complete, detailed design system:\n\n${input}\n\nProvide the full design system documentation in markdown with all CSS custom properties, component specifications, and design tokens. Be thorough and precise.`
+    );
+}
+
+export async function generateLandingPageCopy(productDescription, copySystemRules, structureRules, perplexityResearch) {
+    const systemPrompt = `You are an elite direct-response copywriter specialized in low-ticket digital products (biblical ebooks, R$9-29).
+Your task: generate the COMPLETE copy for a high-converting Landing Page.
+
+## CRITICAL RULE: YOU MUST GENERATE EXACTLY 20 SECTIONS
+The Landing Page has EXACTLY 20 mandatory sections. You MUST return ALL 20. Skipping any section is a FAILURE.
+
+Here are the 20 MANDATORY section IDs you must return, IN THIS EXACT ORDER:
+
+| # | id | name | content keys (minimum) |
+|---|-----|------|----------------------|
+| 1 | s01-navbar | Navbar Fixa | productName, subtitle, ctaText |
+| 2 | s02-hero | Hero | preHeadline, headline, highlightedWords[], subheadline, volumeBadge, deliveryLabel |
+| 3 | s03-metrics | Estatísticas de Impacto | metrics[{number, label}] (min 3) |
+| 4 | s04-benefits | Lista de Benefícios | ctaText, ctaPrice, bullets[{text}] (min 6) |
+| 5 | s05-amostra | Amostra do Conteúdo | sectionLabel, title, images[{name, description}] (min 4) |
+| 6 | s06-quote1 | Citação Bíblica #1 | quote, reference |
+| 7 | s07-desafio | O Desafio | sectionLabel, title, problems[{number, title, description}] (3), closingParagraph |
+| 8 | s08-showcase | Por Dentro do Material | sectionLabel, title, categories[{name}], differentials[{icon, title, description}] |
+| 9 | s09-conteudo | Conteúdo Completo | sectionLabel, title, modules[{number, badge, title, topics[]}] (min 6) |
+| 10 | s10-quote2 | Citação Bíblica #2 | quote, reference |
+| 11 | s11-para-quem | Para Quem É | sectionLabel, title, profiles[{title, description}] OR comparisons{wrong[], right[]} |
+| 12 | s12-depoimentos | Depoimentos | sectionLabel, title, testimonials[{text, name, location}] (exactly 4) |
+| 13 | s13-resumo | Resumo do que Você Recebe | badges[{icon, text}] (6) |
+| 14 | s14-bonus | Bônus Exclusivos | sectionLabel, title, subtitle, bonuses[{name, description, originalPrice, badge?}], totalValue, superBonus |
+| 15 | s15-preco | Seção de Preço | anchors[{item, price}], badge, productName, subtitle, benefits[], priceOriginal, priceFinal, ctaText, trustBadges[] |
+| 16 | s16-garantia | Garantia | days, description, closingLine |
+| 17 | s17-quote3 | Citação Bíblica #3 | quote, reference |
+| 18 | s18-faq | FAQ | questions[{question, answer}] (min 5) |
+| 19 | s19-cta-final | CTA Final | headline, subtitle, priceOriginal, priceFinal, ctaText, trustBadges[] |
+| 20 | s20-footer | Footer | productName, copyright, links[] |
+
+## OUTPUT FORMAT (MANDATORY)
+Return a JSON ARRAY with EXACTLY 20 objects. Each object:
+{
+  "id": "s01-navbar",
+  "name": "01. Navbar Fixa",
+  "content": { ...keys from table above... }
+}
+
+Do NOT wrap in markdown. Return RAW JSON array only.
+
+## COPY RULES
+- All content in Brazilian Portuguese (pt-BR)
+- Biblical quotes must be real and relevant to the product theme
+- Testimonials: use realistic Brazilian names+cities (São Paulo, BH, Curitiba, Recife)
+- Pricing: use R$ currency. "De" price = 3-10x final price
+- Bonuses: minimum 6 bonuses + "Atualizações Vitalícias" as last
+- Benefits: concrete, quantifiable (never generic like "conteúdo de qualidade")
+- FAQs: each answer must reinforce a benefit
+
+---
+COPY SYSTEM RULES:
+${copySystemRules}
+
+---
+STRUCTURE RULES (FULL DETAIL):
+${structureRules}
+
+---
+MARKET RESEARCH (PERPLEXITY):
+${perplexityResearch || 'No research provided.'}
+
+---
+PRODUCT DESCRIPTION:
+"${productDescription}"
+`;
+
+    return callClaude(systemPrompt,
+        `Generate the COMPLETE 20-section landing page copy as a JSON array. ALL 20 sections are MANDATORY. Do not skip any.`
     );
 }
 
