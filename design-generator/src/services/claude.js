@@ -1,7 +1,14 @@
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_CLAUDE_API_KEY;
-const CLAUDE_MODEL = 'anthropic/claude-3.5-sonnet';
+const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
 
-async function callClaude(systemPrompt, userPrompt) {
+export const LLM_MODELS = [
+    { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4.6', icon: '🟣' },
+    { id: 'x-ai/grok-4-fast', name: 'Grok 4.1 Fast', icon: '⚡' },
+    { id: 'deepseek/deepseek-r1', name: 'DeepSeek 3.2', icon: '🔵' },
+    { id: 'openai/gpt-oss-120b', name: 'GPT-oss-120b', icon: '🟢' }
+];
+
+async function callClaude(systemPrompt, userPrompt, model = DEFAULT_MODEL) {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -11,8 +18,8 @@ async function callClaude(systemPrompt, userPrompt) {
             'X-Title': 'Brugger CO Toolbox'
         },
         body: JSON.stringify({
-            model: CLAUDE_MODEL,
-            max_tokens: 8192,
+            model,
+            max_tokens: 16384,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }
@@ -22,13 +29,13 @@ async function callClaude(systemPrompt, userPrompt) {
 
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        console.error('[OpenRouter Claude] API Error:', err);
+        console.error(`[OpenRouter ${model}] API Error:`, err);
         throw new Error(err.error?.message || `Erro na API OpenRouter: ${response.status}`);
     }
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
-    if (!text) throw new Error('Resposta vazia do Claude via OpenRouter');
+    if (!text) throw new Error(`Resposta vazia de ${model} via OpenRouter`);
     return text;
 }
 
@@ -128,7 +135,7 @@ Format everything with clear headings, tables, and CSS code blocks. Be extremely
     );
 }
 
-export async function generateLandingPageCopy(productDescription, copySystemRules, structureRules, perplexityResearch) {
+export async function generateLandingPageCopy(productDescription, copySystemRules, structureRules, perplexityResearch, model = DEFAULT_MODEL) {
     const systemPrompt = `You are an elite direct-response copywriter specialized in low-ticket digital products (biblical ebooks, R$9-29).
 Your task: generate the COMPLETE copy for a high-converting Landing Page.
 
@@ -197,7 +204,8 @@ PRODUCT DESCRIPTION:
 `;
 
     return callClaude(systemPrompt,
-        `Generate the COMPLETE 20-section landing page copy as a JSON array. ALL 20 sections are MANDATORY. Do not skip any.`
+        `Generate the COMPLETE 20-section landing page copy as a JSON array. ALL 20 sections are MANDATORY. Do not skip any.`,
+        model
     );
 }
 

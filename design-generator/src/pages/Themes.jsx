@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { callGeminiWithImages, callGemini } from '../api';
 import { buildExtractThemePrompt, buildThemePreviewPrompt } from '../prompt';
 import { fetchThemes, saveTheme, deleteTheme } from '../services/themesService';
+import { fetchSiteStyles } from '../services/urlFetcher';
 
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -79,13 +80,27 @@ export default function Themes() {
         setError('');
         setResult(null);
         setPreviewHtml('');
-        setStatus('Preparando imagens...');
 
         try {
+            // Step 1: Fetch real CSS from URL if provided
+            let siteData = null;
+            if (urls.trim()) {
+                setStatus('Analisando site de referência...');
+                const firstUrl = urls.trim().split(',')[0].trim();
+                siteData = await fetchSiteStyles(firstUrl);
+                if (siteData.success) {
+                    setStatus(`Site analisado! ${siteData.css.length} chars de CSS extraídos. Gerando DS...`);
+                } else {
+                    setStatus('Não foi possível acessar o site. Gerando com base nas especificações...');
+                }
+            }
+
+            // Step 2: Convert uploaded images to base64
+            setStatus(siteData?.success ? 'Extraindo tokens do CSS real com IA...' : 'Extraindo Design System com IA...');
             const base64Images = await Promise.all(images.map(fileToBase64));
 
-            setStatus('Extraindo Design System com IA...');
-            const prompt = buildExtractThemePrompt(name.trim(), specs.trim(), urls.trim());
+            // Step 3: Build prompt with real CSS data
+            const prompt = buildExtractThemePrompt(name.trim(), specs.trim(), urls.trim(), siteData);
 
             let tokens;
             if (base64Images.length > 0) {

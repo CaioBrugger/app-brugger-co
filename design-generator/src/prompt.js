@@ -90,157 +90,247 @@ Estilo da imagem:
 Gere a imagem ideal para ser usada como visual principal desta seção de landing page.`;
 }
 
-export function buildExtractThemePrompt(themeName, userSpecs, referenceUrls) {
-  return `Você é um especialista em design systems e UI/UX com precisão cirúrgica.
+export function buildExtractThemePrompt(themeName, userSpecs, referenceUrls, siteData) {
+  let contextBlock = '';
 
-TAREFA: Analisar as referências visuais (imagens e/ou URLs) fornecidas pelo usuário e extrair um Design System COMPLETO e PRECISO.
+  if (siteData?.success && siteData.css) {
+    contextBlock = `
+## CÓDIGO CSS REAL EXTRAÍDO DA PÁGINA (FONTE DE VERDADE — USE ESTES VALORES EXATOS):
+
+### Google Fonts encontradas:
+${siteData.fontLinks?.join('\n') || 'Nenhuma'}
+${siteData.fontImports?.join('\n') || ''}
+
+### Headings encontrados na página:
+${siteData.headings?.join('\n') || 'Nenhum'}
+
+### CSS completo da página (ANALISE CADA PROPRIEDADE):
+\`\`\`css
+${siteData.css}
+\`\`\`
+
+### HTML da página (primeiros 5000 chars para contexto):
+\`\`\`html
+${siteData.htmlSnippet}
+\`\`\`
+`;
+  }
+
+  return `Você é um ENGENHEIRO DE DESIGN SYSTEMS com 20 anos de experiência. Sua precisão é CIRÚRGICA — você extrai valores EXATOS, não aproximados.
+
+TAREFA CRÍTICA: Analisar as referências visuais + código CSS fornecido e criar um Design System IDÊNTICO ao original. CADA COR, CADA FONTE, CADA ESPAÇAMENTO DEVE SER EXATO.
 
 NOME DO TEMA: "${themeName}"
-ESPECIFICAÇÕES DO USUÁRIO: "${userSpecs}"
+${userSpecs ? `ESPECIFICAÇÕES DO USUÁRIO: "${userSpecs}"` : ''}
 ${referenceUrls ? `URLS DE REFERÊNCIA: ${referenceUrls}` : ''}
+${contextBlock}
 
-Analise CADA DETALHE visual: cores exatas, tipografia, espaçamentos, bordas, sombras, componentes, animações.
+## INSTRUÇÕES DE PRECISÃO:
+
+### CORES — REGRAS ABSOLUTAS:
+- Se o CSS real foi fornecido acima, EXTRAIA os hex/rgb/hsl EXATOS do código. NÃO INVENTE.
+- Procure pelas propriedades: background, background-color, color, border-color, box-shadow, gradient
+- Identifique TODAS as cores usadas e categorize por função (bg, text, accent, surface, border)
+- Para cores em rgb(), converta para hex. Para hsl(), converta para hex.
+
+### TIPOGRAFIA — REGRAS ABSOLUTAS:
+- Se há Google Fonts links, extraia os nomes exatos das fontes
+- Se há font-family no CSS, copie EXATAMENTE como declarado
+- Identifique a escala tipográfica (font-size) usada no CSS real
+- Identifique os font-weight usados
+
+### ESPAÇAMENTO — REGRAS ABSOLUTAS:
+- Analise padding e margin no CSS para deduzir a escala de espaçamento
+- Identifique padrões (múltiplos de 4px, 8px, etc.)
+
+### BORDAS E SOMBRAS:
+- Extraia border-radius EXATOS do CSS
+- Extraia box-shadow EXATOS do CSS
 
 Retorne um JSON com esta estrutura EXATA:
 
 {
   "name": "${themeName}",
-  "description": "Descrição curta do estilo visual (1-2 frases)",
-  "personality": ["keyword1", "keyword2", "keyword3"],
+  "description": "Descrição precisa do estilo visual em 1-2 frases",
+  "personality": ["keyword1", "keyword2", "keyword3", "keyword4"],
   "colors": {
-    "background": "#hex",
-    "surface": "#hex",
-    "surface2": "#hex",
-    "surface3": "#hex",
-    "border": "#hex",
-    "borderLight": "#hex",
-    "text": "#hex",
-    "textSecondary": "#hex",
-    "textMuted": "#hex",
-    "accent": "#hex",
-    "accentLight": "#hex",
-    "accentDark": "#hex",
-    "success": "#hex",
-    "error": "#hex",
-    "info": "#hex"
+    "background": "#hex_exato",
+    "surface": "#hex_exato",
+    "surface2": "#hex_exato",
+    "surface3": "#hex_exato",
+    "border": "#hex_exato",
+    "borderLight": "#hex_exato",
+    "text": "#hex_exato",
+    "textSecondary": "#hex_exato",
+    "textMuted": "#hex_exato",
+    "accent": "#hex_exato",
+    "accentLight": "#hex_exato",
+    "accentDark": "#hex_exato",
+    "success": "#hex_exato",
+    "error": "#hex_exato",
+    "info": "#hex_exato"
   },
   "typography": {
-    "fontHeading": "Font Name",
-    "fontBody": "Font Name",
-    "fontMono": "Font Name",
-    "googleFontsImport": "@import url('https://fonts.googleapis.com/css2?family=...')",
-    "scale": {
-      "xs": "12px",
-      "sm": "14px",
-      "base": "16px",
-      "lg": "18px",
-      "xl": "20px",
-      "2xl": "24px",
-      "3xl": "30px",
-      "4xl": "36px",
-      "5xl": "48px"
-    },
-    "weights": {
-      "light": 300,
-      "regular": 400,
-      "medium": 500,
-      "semibold": 600,
-      "bold": 700
-    }
+    "fontHeading": "Font Name exata",
+    "fontBody": "Font Name exata",
+    "fontMono": "Font Name ou null",
+    "googleFontsImport": "@import url exata",
+    "scale": { "xs": "12px", "sm": "14px", "base": "16px", "lg": "18px", "xl": "20px", "2xl": "24px", "3xl": "30px", "4xl": "36px", "5xl": "48px" },
+    "weights": { "light": 300, "regular": 400, "medium": 500, "semibold": 600, "bold": 700 }
   },
-  "spacing": {
-    "xs": "4px",
-    "sm": "8px",
-    "md": "16px",
-    "lg": "24px",
-    "xl": "32px",
-    "2xl": "48px",
-    "3xl": "64px"
-  },
-  "radius": {
-    "none": "0",
-    "sm": "4px",
-    "md": "8px",
-    "lg": "16px",
-    "xl": "24px",
-    "full": "9999px"
-  },
-  "shadows": {
-    "sm": "0 1px 2px rgba(...)",
-    "md": "0 4px 6px rgba(...)",
-    "lg": "0 10px 25px rgba(...)",
-    "xl": "0 20px 50px rgba(...)"
-  },
+  "spacing": { "xs": "4px", "sm": "8px", "md": "16px", "lg": "24px", "xl": "32px", "2xl": "48px", "3xl": "64px" },
+  "radius": { "none": "0", "sm": "valor_exato", "md": "valor_exato", "lg": "valor_exato", "xl": "valor_exato", "full": "9999px" },
+  "shadows": { "sm": "valor_exato", "md": "valor_exato", "lg": "valor_exato", "xl": "valor_exato" },
   "components": {
-    "buttonPrimary": {
-      "background": "#hex",
-      "color": "#hex",
-      "borderRadius": "value",
-      "padding": "value",
-      "fontSize": "value",
-      "fontWeight": "value",
-      "hoverBackground": "#hex"
-    },
-    "buttonSecondary": {
-      "background": "#hex",
-      "color": "#hex",
-      "border": "value",
-      "borderRadius": "value",
-      "padding": "value"
-    },
-    "card": {
-      "background": "#hex",
-      "border": "value",
-      "borderRadius": "value",
-      "padding": "value",
-      "shadow": "value"
-    },
-    "input": {
-      "background": "#hex",
-      "border": "value",
-      "borderRadius": "value",
-      "padding": "value",
-      "focusBorder": "#hex"
-    }
+    "buttonPrimary": { "background": "#hex", "color": "#hex", "borderRadius": "valor", "padding": "valor", "fontSize": "valor", "fontWeight": "valor", "hoverBackground": "#hex" },
+    "buttonSecondary": { "background": "#hex", "color": "#hex", "border": "valor", "borderRadius": "valor", "padding": "valor" },
+    "card": { "background": "#hex", "border": "valor", "borderRadius": "valor", "padding": "valor", "shadow": "valor" },
+    "input": { "background": "#hex", "border": "valor", "borderRadius": "valor", "padding": "valor", "focusBorder": "#hex" }
   },
-  "cssVariables": ":root { /* ALL CSS custom properties ready to copy */ }"
+  "cssVariables": ":root { /* TODAS as variáveis CSS organizadas */ }"
 }
 
-REGRAS CRÍTICAS:
-- Extraia TODOS os valores com precisão máxima baseado nas imagens/referências
-- Se não conseguir determinar um valor com certeza, estime com base no que é visível e use o valor mais próximo
-- O campo "cssVariables" deve conter um bloco :root {} COMPLETO e pronto para uso
-- Cores DEVEM ser hex válidos
-- Fontes devem estar disponíveis no Google Fonts quando possível
-- Retorne APENAS o JSON válido, sem markdown`;
+REGRAS FINAIS:
+- Cores DEVEM ser hex extraídos do CSS real (se disponível), NÃO inventados
+- Fontes DEVEM ser as mesmas do site original
+- O cssVariables deve ser um bloco :root {} COMPLETO e FUNCIONAL
+- Se um valor não pode ser determinado com certeza, sinalize com comentário /* ~estimado */
+- Retorne APENAS o JSON válido, sem markdown wrapping`;
 }
 
 export function buildThemePreviewPrompt(tokens) {
-  return `Você é um designer UI expert. Crie um HTML COMPLETO de preview para visualizar este Design System:
+  return `Você é um designer UI SÊNIOR. Crie uma LANDING PAGE DE DEMONSTRAÇÃO que represente FIELMENTE este Design System.
 
+TOKENS DO DESIGN SYSTEM:
 ${JSON.stringify(tokens, null, 2)}
 
-O HTML deve mostrar:
-1. Paleta de cores (swatches com nome do token e hex)
-2. Demonstração tipográfica (headings H1-H4, body, captions)
-3. Escala de espaçamento (barras visuais)
-4. Demonstração de bordas e sombras
-5. Componentes demo: botão primary, botão secondary, card, input
-6. Um mini-hero section usando o tema
+CRIE UMA PÁGINA HTML COMPLETA que demonstre o tema com estas seções:
 
-REGRAS:
-- Use TODAS as cores e tokens do JSON acima
-- HTML auto-contido com CSS inline em <style>
-- Inclua o import do Google Fonts do tema
-- O preview deve representar EXATAMENTE como o tema ficaria numa landing page
-- Layout limpo e organizado com seções bem separadas
-- Responsivo
+1. **HERO SECTION**: Um hero impactante usando as cores de background, accent e tipografia do tema. Título grande com a fonte heading, subtítulo com fonte body.
+
+2. **FEATURE CARDS**: 3 cards lado a lado mostrando as cores de surface, border, radius e shadow do tema. Cada card com ícone, título e texto.
+
+3. **CTA SECTION**: Uma seção com botão primary e botão secondary, demonstrando exatamente os estilos de componente definidos nos tokens.
+
+4. **FOOTER**: Seção com background surface e texto secondary.
+
+REGRAS OBRIGATÓRIAS:
+- Use EXATAMENTE os tokens fornecidos (cores hex, fontes, radius, shadows — sem alterar)
+- O Google Fonts import DEVE estar no <head>
+- CSS em <style> block, sem external dependencies
+- O background PRINCIPAL deve ser a cor "background" do tema
+- O accent/primary deve ser a cor "accent"
+- Use a fonte "fontHeading" para títulos e "fontBody" para corpo
+- Border-radius nos cards e botões devem ser os valores EXATOS dos tokens
+- A página deve parecer PROFISSIONAL e PREMIUM, não genérica
+- Inclua transições hover nos botões e cards
+- Responsivo (mobile + desktop)
+- Mínimo 100vh de altura
 
 Retorne um JSON:
 {
-  "html": "<!DOCTYPE html>...HTML completo..."
+  "html": "<!DOCTYPE html>...HTML completo e auto-contido..."
 }
 
-CRÍTICO: Retorne APENAS o JSON válido.`;
+CRÍTICO: O HTML deve ser BONITO e FIEL aos tokens. Retorne APENAS o JSON válido.`;
 }
 
+export function buildModularLandingPagePrompt(copySectionsJson, designSystemTokens, frontendSpecialistRules) {
+  return `Você é um Arquiteto Frontend Sênior e um Designer de UI Expert.
+Seu objetivo é gerar o código HTML e CSS para uma Landing Page completa, modular e de alta conversão.
+
+Você receberá duas coisas:
+1. O CONTEÚDO (Copy) estruturado em um array JSON de seções (cada seção pode ter "suggestedImages" com URLs/placeholders).
+2. O DESIGN SYSTEM (Tokens) que definem a identidade visual da página.
+
+VOCÊ DEVE:
+Gerar um array JSON onde cada elemento representa uma <section> ou <header>/<footer> isolado.
+Cada elemento deve conter o HTML completo para aquela seção com CSS embutido em <style> blocks.
+
+## REGRAS DE DESIGN (OBRIGATÓRIAS):
+1. Visual "Dark Luxury Biblical": fundo super escuro, textos claros, acentos dourados
+2. NUNCA use roxo, violeta ou magenta (Purple Ban)
+3. Geometria inovadora: sharp edges, brutalismo sutil, não genericamente arredondado
+4. Não use glassmorphism barato. Use cores sólidas, texturas grain, sobreposições profundas
+5. Mobile-First responsivo
+6. Na PRIMEIRA seção, importe as fontes do Google Fonts no <style>
+
+## REGRAS DE IMAGENS (OBRIGATÓRIO):
+- Quando uma seção tiver "suggestedImages" no JSON da copy, você DEVE usar esses valores como src em tags <img>
+- Formato: <img src="IMAGE_PLACEHOLDER_s02-hero" alt="..." style="width:100%; max-width:600px; border-radius:12px; object-fit:cover;">
+- SEMPRE coloque max-width, border-radius e object-fit nas imagens
+- NÃO invente URLs de imagem. Use SOMENTE as suggestedImages fornecidas
+
+## REGRAS DE ANIMAÇÕES (OBRIGATÓRIO):
+Adicione estas classes CSS nos elementos para animações de scroll:
+- .lp-animate → elementos que devem fazer fade-in ao scroll
+- .lp-animate-delay-1, .lp-animate-delay-2, .lp-animate-delay-3 → delays progressivos
+- .lp-fade-left → entrada da esquerda
+- .lp-fade-right → entrada da direita
+- .lp-card-glow → glow dourado no hover em cards
+- .lp-cta-shimmer → shimmer dourado nos botões CTA
+- .lp-pulse → pulsação sutil (badges, dots)
+
+Exemplos de uso:
+<h2 class="lp-animate">Título</h2>
+<div class="lp-animate lp-animate-delay-1">Card 1</div>
+<button class="lp-cta-shimmer">Adquirir Agora</button>
+
+## REGRAS DE QUALIDADE HTML:
+- Todas as tags DEVEM estar fechadas corretamente
+- max-width: 1200px e margin: 0 auto nos containers internos
+- Padding vertical mínimo: 4rem (64px) em cada seção
+- Todos os botões devem ter hover effects (transform, opacity, box-shadow)
+- Todos os cards devem ter transição suave no hover
+- Imagens com max-width: 100% e height: auto
+
+TOKENS DO DESIGN SYSTEM:
+${JSON.stringify(designSystemTokens, null, 2)}
+
+FRONTEND SPECIALIST RULES:
+${frontendSpecialistRules}
+
+CONTEÚDO (COPY):
+${JSON.stringify(copySectionsJson, null, 2)}
+
+FORMATO DE SAÍDA (JSON puro, sem markdown):
+[
+  {
+    "id": "s01-navbar",
+    "name": "01. Navbar Fixa",
+    "html": "<header id='s01-navbar'>... HTML completo com <style> ...</header>"
+  },
+  {
+    "id": "s02-hero",
+    "name": "02. Hero",
+    "html": "<section id='s02-hero'>... HTML com classes lp-animate e imagens ...</section>"
+  }
+]
+
+CRÍTICO: HTML bonito, limpo, responsivo. Use EXATAMENTE os tokens do Design System. Use as classes de animação. Use as suggestedImages.`;
+}
+
+export function buildRegenerateSectionPrompt(sectionId, sectionHtml, designSystemTokens, userInstructions) {
+  return `Você é um Arquiteto Frontend Sênior. Sua tarefa é alterar o código de uma sessão isolada de uma Landing Page com base em um pedido do usuário.
+
+Id da Seção: ${sectionId}
+HTML ATUAL DA SEÇÃO:
+<HTML_ORIGINAL>
+${sectionHtml}
+</HTML_ORIGINAL>
+
+TOKENS DO DESIGN SYSTEM:
+${JSON.stringify(designSystemTokens, null, 2)}
+
+O usuário quer estas alterações:
+"${userInstructions}"
+
+Modifique o HTML implementando as alterações solicitadas. O tema DEVE continuar seguindo as regras de "Dark Luxury Biblical" (fundo escuro, títulos Serifados, acentos dourados) a menos que o pedido diga o contrário. 
+Mantenha o HTML limpo, responsivo e modular.
+
+Retorne APENAS um objeto JSON válido (sem \`\`\`json wraps):
+{
+  "id": "${sectionId}",
+  "html": "<section id='${sectionId}'>... novo código da seção ...</section>"
+}`;
+}

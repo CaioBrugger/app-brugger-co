@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 const DesignGenerator = lazy(() => import('./pages/DesignGenerator'));
 const Products = lazy(() => import('./pages/Products'));
 const Themes = lazy(() => import('./pages/Themes'));
+const LandingPageBuilder = lazy(() => import('./pages/LandingPageBuilder'));
 const Overview = lazy(() => import('./pages/design-system/Overview'));
 const Identity = lazy(() => import('./pages/design-system/Identity'));
 const Colors = lazy(() => import('./pages/design-system/tokens/Colors'));
@@ -28,6 +29,7 @@ export default function App() {
                     <Routes>
                         {/* Main App Routes */}
                         <Route path="/" element={<Dashboard />} />
+                        <Route path="/builder" element={<LandingPageBuilder />} />
                         <Route path="/design" element={<DesignGenerator />} />
                         <Route path="/products" element={<Products />} />
                         <Route path="/themes" element={<Themes />} />
