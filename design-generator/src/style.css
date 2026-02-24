@@ -1,4 +1,4 @@
-/* ============= Reset & Base ============= */
+﻿/* ============= Reset & Base ============= */
 *,
 *::before,
 *::after {
@@ -742,7 +742,7 @@ input::placeholder {
   border-bottom-color: var(--accent);
 }
 
-/* ============= Agents Page — Premium Redesign ============= */
+/* ============= Agents Page â€” Premium Redesign ============= */
 .agents-page {
   max-width: 1100px;
 }
@@ -803,7 +803,7 @@ input::placeholder {
   gap: 1.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 1.25rem 1.75rem;
   flex-shrink: 0;
 }
@@ -847,7 +847,7 @@ input::placeholder {
   padding: 0.65rem 1.25rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   font-family: var(--font-body);
   font-size: 0.82rem;
   font-weight: 500;
@@ -876,7 +876,7 @@ input::placeholder {
   font-weight: 700;
   background: var(--surface-3);
   padding: 0.1rem 0.45rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
 }
 
@@ -899,7 +899,7 @@ input::placeholder {
   gap: 0.75rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 0 1rem;
   transition: border-color 0.3s ease;
 }
@@ -939,7 +939,7 @@ input::placeholder {
   font-weight: 600;
   padding: 0.35rem 0.85rem;
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--text-muted);
   cursor: pointer;
@@ -958,7 +958,7 @@ input::placeholder {
   color: var(--accent);
 }
 
-/* Agent Grid — V2 Cards */
+/* Agent Grid â€” V2 Cards */
 .agents-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -969,7 +969,7 @@ input::placeholder {
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--agent-color, var(--accent));
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 1.25rem 1.5rem;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1004,7 +1004,7 @@ input::placeholder {
   color: var(--text-muted);
   background: var(--surface-3);
   padding: 0.2rem 0.6rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .agent-card-v2-name {
@@ -1034,7 +1034,7 @@ input::placeholder {
   font-size: 0.62rem;
   font-weight: 600;
   padding: 0.2rem 0.5rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: var(--surface-3);
   color: var(--text-muted);
   letter-spacing: 0.03em;
@@ -1069,7 +1069,7 @@ input::placeholder {
   font-size: 0.62rem;
   font-weight: 700;
   padding: 0.15rem 0.5rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   letter-spacing: 0.05em;
 }
 
@@ -1083,7 +1083,7 @@ input::placeholder {
   font-size: 0.72rem;
   font-weight: 600;
   padding: 0.2rem 0.6rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: rgba(201, 169, 98, 0.12);
   color: var(--accent);
   border: 1px solid rgba(201, 169, 98, 0.18);
@@ -1107,7 +1107,7 @@ input::placeholder {
   font-size: 0.9rem;
 }
 
-/* Agent Modal — V2 */
+/* Agent Modal â€” V2 */
 .agent-modal-overlay {
   position: fixed;
   inset: 0;
@@ -1125,7 +1125,7 @@ input::placeholder {
 .agent-modal {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   max-width: 820px;
   width: 100%;
   animation: fadeInUp 0.3s ease;
@@ -1168,7 +1168,7 @@ input::placeholder {
 .agent-modal-close {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 0.4rem;
   color: var(--text-muted);
   cursor: pointer;
@@ -1267,7 +1267,7 @@ input::placeholder {
 .agent-modal-body code {
   background: var(--surface-3);
   padding: 0.15rem 0.4rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   font-size: 0.8rem;
   color: var(--accent-light);
 }
@@ -1275,7 +1275,7 @@ input::placeholder {
 .agent-modal-body pre {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 1rem;
   overflow-x: auto;
   margin-bottom: 1rem;
@@ -1341,14 +1341,14 @@ input::placeholder {
 .agents-upload-intro code {
   background: var(--surface-3);
   padding: 0.1rem 0.35rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   font-size: 0.82rem;
   color: var(--accent-light);
 }
 
 .agents-dropzone {
   border: 1px dashed var(--border-light);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 3.5rem 2rem;
   text-align: center;
   cursor: pointer;
@@ -1425,7 +1425,7 @@ input::placeholder {
   color: var(--accent);
   background: rgba(201, 169, 98, 0.08);
   padding: 0.3rem 0.85rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   margin-bottom: 0.75rem;
 }
 
@@ -1450,7 +1450,7 @@ input::placeholder {
 }
 
 .agents-generate-input {
-  border-radius: 2px !important;
+  border-radius: var(--radius-sm) !important;
 }
 
 /* Generate Loading */
@@ -1514,7 +1514,7 @@ input::placeholder {
 .agents-gen-result {
   margin-top: 2.5rem;
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
@@ -1581,7 +1581,7 @@ input::placeholder {
 .agents-gen-result-body code {
   background: var(--surface-3);
   padding: 0.15rem 0.4rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   font-size: 0.8rem;
   color: var(--accent-light);
 }
@@ -1589,7 +1589,7 @@ input::placeholder {
 .agents-gen-result-body pre {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 1rem;
   overflow-x: auto;
   margin-bottom: 1rem;
@@ -1799,7 +1799,7 @@ input::placeholder {
   padding: 0.75rem 1rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   margin-bottom: 2.5rem;
   overflow-x: auto;
   scrollbar-width: none;
@@ -2045,7 +2045,7 @@ input::placeholder {
   color: var(--accent);
   background: rgba(201, 169, 98, 0.1);
   padding: 0.15rem 0.4rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .ds-rule-no {
@@ -2089,7 +2089,7 @@ input::placeholder {
   color: var(--accent);
   background: rgba(201, 169, 98, 0.1);
   padding: 0.25rem 0.6rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .ds-type-family-meta span {
@@ -2295,7 +2295,7 @@ input::placeholder {
   font-size: 0.68rem;
   background: rgba(201, 169, 98, 0.08);
   padding: 0.1rem 0.35rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 /* Demo Buttons */
@@ -2388,7 +2388,7 @@ input::placeholder {
   background: rgba(201, 169, 98, 0.15);
   color: var(--accent);
   padding: 0.25rem 0.6rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   margin-bottom: 0.75rem;
 }
 
@@ -2412,7 +2412,7 @@ input::placeholder {
   background: rgba(74, 222, 128, 0.15);
   color: var(--success);
   padding: 0.2rem 0.6rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   margin-bottom: 0.75rem;
 }
 
@@ -2629,7 +2629,7 @@ input::placeholder {
   color: var(--accent);
   background: rgba(201, 169, 98, 0.08);
   padding: 0.15rem 0.4rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 /* Code Block */
@@ -3022,7 +3022,7 @@ input::placeholder {
   flex: 1;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 1.25rem 1.5rem;
   text-align: center;
   transition: border-color 0.3s ease, transform 0.3s ease;
@@ -3073,7 +3073,7 @@ input::placeholder {
 .dash-todo {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
@@ -3100,7 +3100,7 @@ input::placeholder {
   font-weight: 600;
   letter-spacing: 0.04em;
   padding: 0.2rem 0.6rem;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .dash-todo-count.pending {
@@ -3124,7 +3124,7 @@ input::placeholder {
   font-weight: 600;
   padding: 0.35rem 0.85rem;
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--text-muted);
   cursor: pointer;
@@ -3152,7 +3152,7 @@ input::placeholder {
   flex: 1;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   color: var(--text);
   font-family: var(--font-body);
   font-size: 0.88rem;
@@ -3176,7 +3176,7 @@ input::placeholder {
   width: 42px;
   background: var(--accent);
   border: none;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   color: var(--bg);
   cursor: pointer;
   transition: all 0.25s ease;
@@ -3212,7 +3212,7 @@ input::placeholder {
 
 .dash-todo-list::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .dash-todo-item {
@@ -3222,7 +3222,7 @@ input::placeholder {
   padding: 0.7rem 0.85rem;
   background: var(--surface-2);
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   transition: all 0.25s ease;
   animation: todoSlideIn 0.3s ease both;
 }
@@ -3244,7 +3244,7 @@ input::placeholder {
   width: 20px;
   height: 20px;
   border: 2px solid var(--border-light);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: none;
   cursor: pointer;
   display: flex;
@@ -3335,7 +3335,7 @@ input::placeholder {
   padding: 1.15rem 1.25rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   text-decoration: none;
   color: var(--text);
   transition: all 0.3s ease;
@@ -3376,7 +3376,7 @@ input::placeholder {
   gap: 1.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 1.25rem 1.75rem;
   margin-bottom: 2rem;
 }
@@ -3421,7 +3421,7 @@ input::placeholder {
   gap: 0.75rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   padding: 0 1rem;
   transition: border-color 0.3s ease;
 }
@@ -3462,7 +3462,7 @@ input::placeholder {
   font-weight: 600;
   padding: 0.35rem 0.85rem;
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--text-muted);
   cursor: pointer;
@@ -3492,7 +3492,7 @@ input::placeholder {
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--prod-color, var(--accent));
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   transition: all 0.3s ease;
   animation: fadeInUp 0.4s ease both;
@@ -3562,7 +3562,7 @@ input::placeholder {
   text-transform: uppercase;
   padding: 0.2rem 0.65rem;
   border: 1px solid;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .prod-card-meta {
@@ -3594,7 +3594,7 @@ input::placeholder {
 
 .prod-lang-table {
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
@@ -3653,7 +3653,7 @@ input::placeholder {
   text-decoration: none;
   padding: 0.3rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   transition: all 0.2s ease;
 }
 
@@ -3717,7 +3717,7 @@ input::placeholder {
   font-size: 0.95rem;
 }
 
-/* ============= Responsive — Dashboard + Products ============= */
+/* ============= Responsive â€” Dashboard + Products ============= */
 @media (max-width: 768px) {
   .dash-stats {
     flex-wrap: wrap;
