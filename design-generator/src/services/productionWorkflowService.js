@@ -56,7 +56,10 @@ export async function runProductionWorkflow(item, result, onProgress, signal) {
     };
 
     // ── Step 1: Gerar prompt ───────────────────────────────────────────────────
-    report(1, `Preparando prompt para "${item.nome}"...`);
+    const itemLabel = item._type === 'module'
+        ? `Módulo ${item.numero} — ${item.nome}`
+        : item.nome;
+    report(1, `Preparando prompt para "${itemLabel}"...`);
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     const { systemPrompt, userPrompt, ctx } = generatePrompt(item, result);
@@ -123,7 +126,10 @@ export async function runProductionWorkflow(item, result, onProgress, signal) {
     report(6, 'Montando documento Word...');
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    const subtitle = result.produto?.subtitulo || '';
+    // Para módulos: subtitle = nome do produto. Para bônus: subtitle = descrição do produto.
+    const subtitle = item._type === 'module'
+        ? ctx.productNome || result.produto?.nome || ''
+        : result.produto?.subtitulo || '';
     const docxBlob = await buildDocx(processedMarkdown, imageMap, ctx.nome, subtitle);
 
     // ── Step 7: Gerar PDF ─────────────────────────────────────────────────────

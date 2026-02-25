@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { fetchLandingPages, fetchLandingPage } from '../services/landingPagesService';
 import { runEstruturador } from '../services/estruturadorService';
 import WorkflowModal from './WorkflowModal.jsx';
-import { inferItemTipo } from '../services/promptGeneratorService.js';
 
 // ─── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -1180,124 +1179,239 @@ function BonusTab({ result }) {
 const EBOOK_TYPES = new Set(['ebook_simples', 'ebook_imagens']);
 
 function PlanoTab({ result, onCreateItem }) {
-    const plano = result.planoProducao || [];
+    const produto    = result.produto    || {};
+    const bonus      = result.bonus      || [];
+    const orderBumps = result.orderBumps || [];
+    const modulos    = produto.modulos   || [];
 
-    if (plano.length === 0) {
-        return <EmptyState icon="📋" title="Plano não gerado" desc="O plano de produção não foi extraído desta análise." />;
+    const hasContent = modulos.length > 0 || bonus.length > 0 || orderBumps.length > 0;
+    if (!hasContent) {
+        return <EmptyState icon="📋" title="Sem entregáveis" desc="Nenhum módulo ou bônus foi extraído desta análise." />;
     }
 
-    const grouped = {};
-    for (const item of plano) {
-        const fase = item.fase || 'Outros';
-        if (!grouped[fase]) grouped[fase] = [];
-        grouped[fase].push(item);
-    }
+    // Tipo do produto principal (herdado pelos módulos)
+    const produtoTipo = (produto.imagens > 0) ? 'ebook_imagens' : 'ebook_simples';
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-            {Object.entries(grouped).map(([fase, items]) => {
-                const faseColor = FASE_COLORS[fase] || C.accent;
-                const totalMin = items.reduce((acc, it) => acc + (it.tempoMinutos || 0), 0);
-                const isMontagem = fase === 'Montagem Final';
 
-                return (
-                    <div key={fase}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-                            <div style={{ width: 7, height: 7, borderRadius: '50%', background: faseColor, flexShrink: 0 }} />
-                            <span style={{ color: faseColor, fontSize: '10px', fontFamily: 'DM Sans', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                                {fase}
-                            </span>
-                            {totalMin > 0 && (
-                                <span style={{ color: C.textMuted, fontSize: '11px', fontFamily: 'DM Sans', marginLeft: 'auto' }}>
-                                    ~{totalMin >= 60 ? `${Math.round(totalMin / 60)}h` : `${totalMin}min`}
-                                </span>
-                            )}
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            {items.map((item, i) => {
-                                // Inferir tipo para decidir se o botão está habilitado
-                                const tipo = !isMontagem ? inferItemTipo(item, result) : null;
-                                const canCreate = !isMontagem && EBOOK_TYPES.has(tipo);
-                                const showBtn = !isMontagem;
-
-                                return (
-                                    <div key={i} style={{
-                                        background: C.surface, border: `1px solid ${C.border}`,
-                                        borderRadius: 10, padding: '0.9rem 1.1rem',
-                                        display: 'flex', alignItems: 'flex-start', gap: '0.9rem'
-                                    }}>
-                                        <div style={{
-                                            width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-                                            background: `${faseColor}18`, border: `1px solid ${faseColor}35`,
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            color: faseColor, fontSize: '11px', fontFamily: 'DM Sans', fontWeight: 700
-                                        }}>
-                                            {item.passo ?? i + 1}
-                                        </div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem' }}>
-                                                <span style={{ color: C.text, fontSize: '13px', fontFamily: 'DM Sans', fontWeight: 500 }}>
-                                                    {item.nome}
-                                                </span>
-                                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexShrink: 0 }}>
-                                                    {item.ferramenta && (
-                                                        <span style={{
-                                                            padding: '0.15rem 0.5rem', borderRadius: 6,
-                                                            background: C.surface2, border: `1px solid ${C.border}`,
-                                                            color: C.textMuted, fontSize: '10px', fontFamily: 'DM Sans'
-                                                        }}>
-                                                            {item.ferramenta}
-                                                        </span>
-                                                    )}
-                                                    {item.tempoMinutos > 0 && (
-                                                        <span style={{ color: C.textMuted, fontSize: '10px', fontFamily: 'DM Sans' }}>
-                                                            ~{item.tempoMinutos}min
-                                                        </span>
-                                                    )}
-
-                                                    {/* Botão ✦ Criar */}
-                                                    {showBtn && (
-                                                        <button
-                                                            onClick={() => canCreate && onCreateItem?.(item)}
-                                                            disabled={!canCreate}
-                                                            title={canCreate
-                                                                ? `Criar "${item.nome}" (DOCX + PDF)`
-                                                                : `Tipo "${tipo || 'desconhecido'}" ainda não suportado — em breve`
-                                                            }
-                                                            style={{
-                                                                padding: '0.25rem 0.75rem', borderRadius: 6,
-                                                                border: canCreate
-                                                                    ? `1px solid rgba(201,169,98,0.5)`
-                                                                    : `1px solid ${C.border}`,
-                                                                background: canCreate
-                                                                    ? 'rgba(201,169,98,0.1)'
-                                                                    : C.surface2,
-                                                                color: canCreate ? C.accent : C.textMuted,
-                                                                fontFamily: 'DM Sans', fontSize: '11px', fontWeight: 600,
-                                                                cursor: canCreate ? 'pointer' : 'not-allowed',
-                                                                transition: 'all 0.2s ease',
-                                                                whiteSpace: 'nowrap',
-                                                            }}
-                                                        >
-                                                            ✦ Criar
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            {item.descricao && (
-                                                <p style={{ color: C.textSec, fontSize: '12px', fontFamily: 'DM Sans', margin: '0.25rem 0 0', lineHeight: 1.55 }}>
-                                                    {item.descricao}
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
+            {/* ── Produto Principal — Módulos ── */}
+            {modulos.length > 0 && (
+                <PlanoSection title="PRODUTO PRINCIPAL" color={C.accent}>
+                    {modulos.map((mod, i) => (
+                        <DeliverableRow
+                            key={i}
+                            numero={mod.numero ?? i + 1}
+                            nome={mod.nome}
+                            tipo={produtoTipo}
+                            meta={mod.paginasEstimadas ? `~${mod.paginasEstimadas}pg` : null}
+                            topicos={mod.topicos}
+                            onCriar={() => onCreateItem?.({
+                                _type:       'module',
+                                numero:      mod.numero ?? i + 1,
+                                nome:        mod.nome,
+                                topicos:     mod.topicos || [],
+                                paginas:     mod.paginasEstimadas,
+                                tipo:        produtoTipo,
+                                productNome: produto.nome,
+                                publicoAlvo: produto.publicoAlvo,
                             })}
-                        </div>
+                        />
+                    ))}
+                </PlanoSection>
+            )}
+
+            {/* ── Bônus ── */}
+            {bonus.length > 0 && (
+                <PlanoSection title="BÔNUS" color={C.success}>
+                    {bonus.map((b, i) => (
+                        <DeliverableRow
+                            key={i}
+                            numero={null}
+                            nome={b.nome}
+                            tipo={b.tipo}
+                            meta={b.paginasEstimadas ? `~${b.paginasEstimadas}pg` : null}
+                            badge={b.isSuper ? '⭐ SUPER' : null}
+                            badgeColor={b.isSuper ? C.accent : null}
+                            topicos={null}
+                            onCriar={EBOOK_TYPES.has(b.tipo) ? () => onCreateItem?.({
+                                _type:       'bonus',
+                                nome:        b.nome,
+                                descricao:   b.descricao,
+                                tipo:        b.tipo,
+                                paginas:     b.paginasEstimadas,
+                                publicoAlvo: produto.publicoAlvo,
+                                isSuper:     b.isSuper,
+                            }) : null}
+                        />
+                    ))}
+                </PlanoSection>
+            )}
+
+            {/* ── Order Bumps ── */}
+            {orderBumps.length > 0 && (
+                <PlanoSection title="ORDER BUMPS" color="#60A5FA">
+                    {orderBumps.map((ob, i) => (
+                        <DeliverableRow
+                            key={i}
+                            numero={null}
+                            nome={ob.nome}
+                            tipo={ob.tipo}
+                            meta={ob.preco ? `R$${ob.preco}` : null}
+                            topicos={null}
+                            onCriar={EBOOK_TYPES.has(ob.tipo) ? () => onCreateItem?.({
+                                _type:       'bonus',
+                                nome:        ob.nome,
+                                descricao:   ob.descricao,
+                                tipo:        ob.tipo || 'ebook_simples',
+                                paginas:     30,
+                                publicoAlvo: produto.publicoAlvo,
+                            }) : null}
+                        />
+                    ))}
+                </PlanoSection>
+            )}
+        </div>
+    );
+}
+
+function PlanoSection({ title, color, children }) {
+    return (
+        <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                <span style={{ color, fontSize: '10px', fontFamily: 'DM Sans', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    {title}
+                </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {children}
+            </div>
+        </div>
+    );
+}
+
+function DeliverableRow({ numero, nome, tipo, meta, badge, badgeColor, topicos, onCriar }) {
+    const [open, setOpen] = useState(false);
+    const tipoConfig = TIPO_CONFIG[tipo] || TIPO_CONFIG.ebook_simples;
+    const canCreate  = !!onCriar;
+
+    return (
+        <div style={{
+            background: C.surface, border: `1px solid ${C.border}`,
+            borderRadius: 10, overflow: 'hidden',
+            transition: 'border-color 0.2s',
+        }}>
+            <div style={{
+                padding: '0.85rem 1.1rem',
+                display: 'flex', alignItems: 'center', gap: '0.75rem',
+            }}>
+                {/* Número do módulo */}
+                {numero != null && (
+                    <div style={{
+                        width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                        background: 'rgba(201,169,98,0.12)', border: '1px solid rgba(201,169,98,0.25)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: C.accent, fontSize: '11px', fontFamily: 'DM Sans', fontWeight: 700,
+                    }}>
+                        {numero}
                     </div>
-                );
-            })}
+                )}
+
+                {/* Nome */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ color: C.text, fontSize: '13px', fontFamily: 'DM Sans', fontWeight: 500 }}>
+                            {nome}
+                        </span>
+                        {badge && (
+                            <span style={{
+                                padding: '0.1rem 0.45rem', borderRadius: 5, fontSize: '9px',
+                                fontFamily: 'DM Sans', fontWeight: 700, letterSpacing: '0.08em',
+                                background: `${badgeColor || C.accent}18`,
+                                border: `1px solid ${badgeColor || C.accent}35`,
+                                color: badgeColor || C.accent,
+                            }}>
+                                {badge}
+                            </span>
+                        )}
+                    </div>
+                </div>
+
+                {/* Meta info + tipo + botão */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                    {/* Tipo badge */}
+                    <span style={{
+                        padding: '0.15rem 0.5rem', borderRadius: 6, fontSize: '10px',
+                        fontFamily: 'DM Sans', fontWeight: 500,
+                        background: `${tipoConfig.color}15`,
+                        border: `1px solid ${tipoConfig.color}30`,
+                        color: tipoConfig.color,
+                    }}>
+                        {tipoConfig.icon} {tipoConfig.label}
+                    </span>
+
+                    {/* Meta (páginas, preço) */}
+                    {meta && (
+                        <span style={{ color: C.textMuted, fontSize: '11px', fontFamily: 'DM Sans' }}>
+                            {meta}
+                        </span>
+                    )}
+
+                    {/* Expandir tópicos */}
+                    {topicos?.length > 0 && (
+                        <button
+                            onClick={() => setOpen(v => !v)}
+                            style={{
+                                background: 'transparent', border: 'none', cursor: 'pointer',
+                                color: C.textMuted, padding: '0.2rem', display: 'flex', alignItems: 'center',
+                            }}
+                            title="Ver tópicos"
+                        >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                                style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                                <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                        </button>
+                    )}
+
+                    {/* ✦ Criar */}
+                    <button
+                        onClick={canCreate ? onCriar : undefined}
+                        disabled={!canCreate}
+                        title={canCreate ? `Gerar DOCX + PDF de "${nome}"` : 'Tipo ainda não suportado — em breve'}
+                        style={{
+                            padding: '0.3rem 0.85rem', borderRadius: 6,
+                            border: canCreate ? '1px solid rgba(201,169,98,0.5)' : `1px solid ${C.border}`,
+                            background: canCreate ? 'rgba(201,169,98,0.1)' : C.surface2,
+                            color: canCreate ? C.accent : C.textMuted,
+                            fontFamily: 'DM Sans', fontSize: '11px', fontWeight: 600,
+                            cursor: canCreate ? 'pointer' : 'not-allowed',
+                            transition: 'all 0.2s ease', whiteSpace: 'nowrap',
+                        }}
+                    >
+                        ✦ Criar
+                    </button>
+                </div>
+            </div>
+
+            {/* Tópicos expandidos */}
+            {open && topicos?.length > 0 && (
+                <div style={{
+                    padding: '0 1.1rem 0.85rem 1.1rem',
+                    borderTop: `1px solid ${C.border}`,
+                    paddingTop: '0.75rem',
+                }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.35rem' }}>
+                        {topicos.map((t, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem' }}>
+                                <span style={{ color: C.success, fontSize: '10px', marginTop: '3px', flexShrink: 0 }}>•</span>
+                                <span style={{ color: C.textSec, fontSize: '11px', fontFamily: 'DM Sans', lineHeight: 1.5 }}>{t}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
