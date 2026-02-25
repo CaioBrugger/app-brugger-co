@@ -1,4 +1,32 @@
-const PROXY = 'https://api.allorigins.win/get?url=';
+const CORS_PROXIES = [
+    (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+];
+
+/**
+ * Fetch HTML via multiple CORS proxies (tries each until one works).
+ */
+async function fetchViaProxy(url) {
+    for (const buildProxy of CORS_PROXIES) {
+        try {
+            const proxyUrl = buildProxy(url);
+            const res = await fetch(proxyUrl);
+            if (!res.ok) continue;
+
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                const data = await res.json();
+                const html = data.contents || data;
+                if (html && typeof html === 'string' && html.length > 100) return html;
+            } else {
+                const html = await res.text();
+                if (html && html.length > 100) return html;
+            }
+        } catch { /* try next proxy */ }
+    }
+    return null;
+}
 
 /**
  * Fetch HTML + CSS from a URL via CORS proxy.
@@ -6,13 +34,8 @@ const PROXY = 'https://api.allorigins.win/get?url=';
  */
 export async function fetchSiteStyles(url) {
     try {
-        const proxyUrl = `${PROXY}${encodeURIComponent(url)}`;
-        const res = await fetch(proxyUrl);
-        if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-
-        const data = await res.json();
-        const html = data.contents;
-        if (!html) throw new Error('Empty response');
+        const html = await fetchViaProxy(url);
+        if (!html) throw new Error('All CORS proxies failed');
 
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
@@ -39,11 +62,8 @@ export async function fetchSiteStyles(url) {
         const externalCSS = [];
         for (const cssUrl of linkHrefs.slice(0, 5)) {
             try {
-                const cssRes = await fetch(`${PROXY}${encodeURIComponent(cssUrl)}`);
-                if (cssRes.ok) {
-                    const cssData = await cssRes.json();
-                    if (cssData.contents) externalCSS.push(cssData.contents);
-                }
+                const cssText = await fetchViaProxy(cssUrl);
+                if (cssText) externalCSS.push(cssText);
             } catch { /* skip broken URLs */ }
         }
 
