@@ -1,19 +1,44 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { products } from '../data/productsData';
 
-// ─── Marketing Copy (gerado + otimizado com IA) ───────────────────────────────
-const PRODUCT_COPY = {
+// ─── Scroll Reveal Hook ──────────────────────────────────────────────────────
+function useScrollReveal() {
+    useEffect(() => {
+        const elements = document.querySelectorAll('[data-reveal]');
+        if (!elements.length) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-revealed');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            },
+            { threshold: 0.12, rootMargin: '0px 0px -60px 0px' }
+        );
+
+        elements.forEach(el => observer.observe(el));
+        return () => observer.disconnect();
+    }, []);
+}
+
+// ─── Extended Descriptions (change #3: longer descriptions) ───────────────────
+const PRODUCT_DESCRIPTIONS = {
     pentateuco: {
-        tagline: 'Descubra os fundamentos eternos da fé no coração dos primeiros livros da Bíblia',
+        tagline: 'Os cinco primeiros livros da Bíblia — a base de toda a fé cristã',
+        full: 'Um estudo versículo a versículo que vai de Gênesis a Deuteronômio, cobrindo a Criação, a Queda, o Dilúvio, a vida dos patriarcas, a libertação do Egito, as leis mosaicas e a aliança com Israel. Cada capítulo inclui contexto histórico, arqueológico e teológico que conecta o Antigo Testamento ao Novo.',
         benefits: [
             'Compreenda a Criação, a Queda e a Aliança com profundidade teológica',
-            'Desvende as leis mosaicas e seu cumprimento em Cristo com clareza doutrinal',
+            'Desvende as leis mosaicas e seu cumprimento em Cristo',
             'Explore a jornada de Abraão a Moisés com contexto histórico completo',
-            'Fortaleça sua base doutrinária com os fundamentos que sustentam toda a Escritura'
+            'Fortaleça sua base doutrinária com os fundamentos de toda a Escritura'
         ]
     },
     historicos: {
-        tagline: 'Viva a história da conquista, da fidelidade e do poder de Deus através do Seu povo',
+        tagline: 'A história do povo de Deus — da conquista ao exílio',
+        full: 'Uma jornada completa pelos livros de Josué a Ester. Conquista de Canaã, a era dos Juízes, a monarquia unida e dividida, o exílio na Babilônia e o retorno. Inclui mapas, cronologias e conexões arqueológicas que tornam a narrativa viva e contextualizada.',
         benefits: [
             'Josué a Ester — toda a história do povo de Deus em profundidade',
             'Guerras, reis e exílio com arqueologia e contexto histórico integrados',
@@ -22,7 +47,8 @@ const PRODUCT_COPY = {
         ]
     },
     poeticos: {
-        tagline: 'Encontre conforto, sabedoria e adoração nas páginas mais profundas da Escritura',
+        tagline: 'Sabedoria, louvor e adoração nas páginas mais profundas da Escritura',
+        full: 'Os cinco livros poéticos — Jó, Salmos, Provérbios, Eclesiastes e Cantares — revelados com análise literária, poética e teológica. Entenda a estrutura hebraica dos Salmos, a filosofia de Eclesiastes, o simbolismo de Cantares e as respostas profundas de Jó para o sofrimento humano.',
         benefits: [
             'Salmos explicados com análise poética que aprofunda o seu louvor',
             'Jó e o mistério do sofrimento humano respondido com a Palavra',
@@ -31,7 +57,8 @@ const PRODUCT_COPY = {
         ]
     },
     'profetas-maiores': {
-        tagline: 'Ouça os maiores profetas e veja como cada palavra aponta para Jesus Cristo',
+        tagline: 'Isaías, Jeremias, Ezequiel e Daniel — as vozes que moldaram a profecia bíblica',
+        full: 'Um estudo exaustivo dos quatro grandes profetas do Antigo Testamento. Contexto político, social e religioso de cada profecia. As visões de Ezequiel e Daniel interpretadas com rigor acadêmico. As profecias messiânicas de Isaías conectadas ao cumprimento em Cristo.',
         benefits: [
             'Isaías — o Evangelho do AT com profecias messiânicas em detalhe',
             'Ezequiel e Daniel explicados com interpretação contextual e profética',
@@ -40,7 +67,8 @@ const PRODUCT_COPY = {
         ]
     },
     'profetas-menores': {
-        tagline: 'Doze vozes proféticas que ainda falam com poder — e você precisa ouvi-las',
+        tagline: 'Doze vozes proféticas que ainda falam com poder — de Oséias a Malaquias',
+        full: 'Os doze profetas menores explicados com toda a riqueza histórica e teológica que merecem. De Oséias — o profeta do amor incondicional — até Malaquias — a última voz antes dos 400 anos de silêncio. Cada livro com aplicação prática para a Igreja contemporânea.',
         benefits: [
             'Oséias a Malaquias — os 12 profetas em profundidade real',
             'A última voz do AT antes do silêncio profético de 400 anos',
@@ -49,7 +77,8 @@ const PRODUCT_COPY = {
         ]
     },
     evangelhos: {
-        tagline: 'Conheça Jesus Cristo como Ele realmente é — através dos quatro retratos mais sagrados da história',
+        tagline: 'Jesus Cristo retratado por quatro perspectivas complementares e inspiradas',
+        full: 'Os quatro Evangelhos — Mateus, Marcos, Lucas e João — analisados versículo a versículo com paralelismos sinóticos, contexto judaico e romano, e aplicação teológica. Entenda por que cada evangelista escreveu para públicos diferentes e como suas narrativas se complementam formando o retrato completo de Cristo.',
         benefits: [
             'Mateus, Marcos, Lucas e João versículo a versículo',
             'Paralelos e diferenças entre os quatro evangelhos explicados',
@@ -58,7 +87,8 @@ const PRODUCT_COPY = {
         ]
     },
     atos: {
-        tagline: 'O poder do Espírito Santo em ação — e como ele ainda age na sua Igreja hoje',
+        tagline: 'O nascimento da Igreja — do Pentecostes às viagens missionárias de Paulo',
+        full: 'A história completa da expansão da Igreja primitiva narrada por Lucas. Do derramamento do Espírito no Pentecostes até a chegada de Paulo a Roma. Inclui mapas das viagens missionárias, contexto geográfico e cultural, e modelos de discipulado aplicáveis à igreja de hoje.',
         benefits: [
             'Nascimento e expansão da Igreja primitiva com riqueza histórica',
             'Padrões de pregação e discipulado que a Igreja deve seguir hoje',
@@ -67,7 +97,8 @@ const PRODUCT_COPY = {
         ]
     },
     'cartas-paulo': {
-        tagline: 'A teologia mais profunda do Novo Testamento, explicada com clareza que transforma vidas',
+        tagline: 'A teologia mais profunda do NT — de Romanos a Filemom',
+        full: 'As treze epístolas de Paulo comentadas com profundidade exegética e clareza pastoral. Justificação pela fé em Romanos, vida cristã em Coríntios, liberdade em Gálatas, a plenitude em Efésios e a alegria em Filipenses. Cada carta com contexto histórico da comunidade destinatária e aplicação prática.',
         benefits: [
             'Domine a justificação pela fé em Romanos com precisão exegética',
             'Vida cristã e dons espirituais pelas cartas aos Coríntios',
@@ -76,7 +107,8 @@ const PRODUCT_COPY = {
         ]
     },
     'cartas-universais': {
-        tagline: 'Fé viva, perseverança real e esperança inabalável para os últimos dias',
+        tagline: 'Hebreus, Tiago, Pedro, João e Judas — fé prática para os últimos tempos',
+        full: 'As oito cartas universais que completam a teologia do Novo Testamento. A superioridade de Cristo em Hebreus, a fé que age em Tiago, a esperança sob perseguição em Pedro, o amor e a verdade em João, e o alerta contra falsos mestres em Judas. Fundamentação sólida para vida cristã madura.',
         benefits: [
             'Hebreus — a superioridade de Cristo e a fé que persevera até o fim',
             'Tiago — a fé que age com princípios práticos que transformam',
@@ -85,7 +117,8 @@ const PRODUCT_COPY = {
         ]
     },
     apocalipse: {
-        tagline: 'O livro mais temido da Bíblia, explicado com clareza, contexto e esperança',
+        tagline: 'O livro da Revelação — decodificado com clareza, contexto e esperança',
+        full: 'O Apocalipse de João explicado sem sensacionalismo e sem medo. As sete cartas às igrejas, os selos, as trombetas, as taças, a Babilônia e a Nova Jerusalém — cada visão interpretada com equilíbrio entre as escolas preterista, historicista, futurista e idealista. A mensagem central: Cristo vence.',
         benefits: [
             'Visões de João com interpretação histórica e profética equilibrada',
             'Selos, trombetas e cartas às sete igrejas sem medo nem confusão',
@@ -94,7 +127,8 @@ const PRODUCT_COPY = {
         ]
     },
     'combo-profetico': {
-        tagline: 'O pacote completo para dominar a profecia bíblica do Antigo ao Novo Testamento',
+        tagline: 'Profetas Maiores + Menores + Apocalipse num único pacote profético completo',
+        full: 'O pacote definitivo para quem quer dominar toda a profecia bíblica. Reúne os três estudos proféticos — Profetas Maiores, Profetas Menores e Apocalipse — num único acesso com preço reduzido. Visão panorâmica coerente da linha profética de Isaías a João, com comentários integrados.',
         benefits: [
             'Profetas Maiores + Profetas Menores + Apocalipse em um só lugar',
             'Visão panorâmica coerente da profecia bíblica do início ao fim',
@@ -103,7 +137,8 @@ const PRODUCT_COPY = {
         ]
     },
     'treinamento-obreiros': {
-        tagline: 'O curso que transforma cristãos comprometidos em obreiros capacitados para o ministério',
+        tagline: 'Formação ministerial completa — de cristão comprometido a obreiro capacitado',
+        full: 'Um curso estruturado para quem sente o chamado ministerial. Cobre pregação, ensino, aconselhamento pastoral, liderança de células, administração eclesiástica, ética ministerial e crescimento espiritual. Inclui exercícios práticos, cases reais e certificado de conclusão.',
         benefits: [
             'Formação ministerial: pregação, aconselhamento e liderança',
             'Conteúdo desenvolvido por teólogos e pastores experientes',
@@ -112,7 +147,8 @@ const PRODUCT_COPY = {
         ]
     },
     'geografia-biblica': {
-        tagline: 'Veja a Bíblia ganhar vida quando você entende onde cada evento realmente aconteceu',
+        tagline: 'Mapas, rotas e contexto geográfico de toda a narrativa bíblica',
+        full: 'A Bíblia ganha vida quando você vê onde cada evento aconteceu. Mapas detalhados de Canaã, Egito, Mesopotâmia e o mundo greco-romano. Rotas do Êxodo, fronteiras tribais, viagens de Paulo, guerras de Israel — tudo com fotografia de sítios arqueológicos e reconstruções 3D.',
         benefits: [
             'Mapas detalhados de todas as regiões, cidades e rotas bíblicas',
             'Contexto geográfico que aprofunda a compreensão de cada narrativa',
@@ -129,23 +165,35 @@ const CATEGORY_LABELS = {
     COMBO: 'Combos & Cursos'
 };
 
-const CATEGORY_STYLE = {
-    AT: { bg: 'rgba(201,169,98,0.12)', color: '#C9A962', border: 'rgba(201,169,98,0.3)' },
-    NT: { bg: 'rgba(74,222,128,0.10)', color: '#4ADE80', border: 'rgba(74,222,128,0.28)' },
-    COMBO: { bg: 'rgba(96,165,250,0.10)', color: '#60A5FA', border: 'rgba(96,165,250,0.28)' }
-};
-
 const HIGHLIGHTS = {
-    evangelhos: { label: 'MAIS VENDIDO', color: '#4ADE80', textColor: '#0a2a18' },
-    apocalipse: { label: 'MAIS ESTUDADO', color: '#C9A962', textColor: '#1a1200' },
-    'combo-profetico': { label: 'MAIS POPULAR', color: '#60A5FA', textColor: '#001a2a' }
+    evangelhos: { label: 'MAIS VENDIDO', solid: true },
+    apocalipse: { label: 'MAIS ESTUDADO', solid: true },
+    'combo-profetico': { label: 'MAIS POPULAR', solid: true }
 };
 
 const FILTER_CATEGORIES = [
-    { id: 'ALL', label: 'Todos os Produtos' },
-    { id: 'AT', label: '📜 Antigo Testamento' },
-    { id: 'NT', label: '✝️ Novo Testamento' },
-    { id: 'COMBO', label: '📦 Combos & Cursos' }
+    { id: 'ALL', label: 'Todos' },
+    { id: 'AT', label: 'Antigo Testamento' },
+    { id: 'NT', label: 'Novo Testamento' },
+    { id: 'COMBO', label: 'Combos & Cursos' }
+];
+
+const TESTIMONIALS = [
+    {
+        text: 'O material de Evangelhos mudou completamente minha forma de pregar. A profundidade técnica aliada à clareza é algo raro de encontrar hoje em dia.',
+        name: 'Pr. André Santos',
+        role: 'Mestre em Divindade',
+    },
+    {
+        text: 'Finalmente entendi o contexto das cartas de Paulo. O material é riquíssimo e as referências cruzadas ajudam muito na preparação de estudos.',
+        name: 'Mariana Costa',
+        role: 'Líder de Pequeno Grupo',
+    },
+    {
+        text: 'A Bíblia Explicativa eleva o nível do ensino bíblico no Brasil. Recomendo para qualquer um que queira sair da superfície no estudo das Escrituras.',
+        name: 'Carlos Oliveira',
+        role: 'Seminarista',
+    }
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -163,268 +211,247 @@ function getLangCount(product) {
     ).length;
 }
 
-// ─── ProductCard ──────────────────────────────────────────────────────────────
+function hasCheckout(product) {
+    const links = getBestLinks(product);
+    return !!(links.checkoutBasic || links.checkoutFull || links.url);
+}
+
+// ─── Sub-Components ───────────────────────────────────────────────────────────
+
+function HeroSection() {
+    return (
+        <section className="vitrine-hero">
+            <div className="vitrine-hero__glow" />
+
+            <div className="vitrine-hero__content">
+                <div className="vitrine-badge vitrine-entrance" style={{ animationDelay: '0.1s' }}>
+                    Excelência Teológica
+                </div>
+
+                <h1 className="vitrine-hero__title vitrine-entrance" style={{ animationDelay: '0.3s' }}>
+                    Mergulhe nas Profundezas da{' '}
+                    <span className="vitrine-gold">Palavra de Deus</span>
+                </h1>
+
+                <p className="vitrine-hero__sub vitrine-entrance" style={{ animationDelay: '0.5s' }}>
+                    Materiais de nível acadêmico traduzidos para uma linguagem acessível.
+                    Transforme sua jornada espiritual com clareza e profundidade ministerial.
+                </p>
+
+                <div className="vitrine-hero__actions vitrine-entrance" style={{ animationDelay: '0.7s' }}>
+                    <a href="#catalogo" className="vitrine-btn vitrine-btn--primary vitrine-btn--lg vitrine-btn--glow">
+                        Ver Catálogo Completo
+                    </a>
+                    <a href="#diferencial" className="vitrine-btn vitrine-btn--outline vitrine-btn--lg">
+                        Conhecer Metodologia
+                    </a>
+                </div>
+
+                <div className="vitrine-stats vitrine-entrance" style={{ animationDelay: '0.9s' }}>
+                    <StatCard value="13" label="Produtos Digitais" />
+                    <StatCard value="6" label="Idiomas Disponíveis" />
+                    <StatCard value="10k+" label="Alunos Ativos" />
+                </div>
+            </div>
+        </section>
+    );
+}
+
+function StatCard({ value, label }) {
+    return (
+        <div className="vitrine-stat-card">
+            <div className="vitrine-stat-card__value">{value}</div>
+            <div className="vitrine-stat-card__label">{label}</div>
+        </div>
+    );
+}
+
+function ValuePropsSection() {
+    const props = [
+        {
+            icon: '📖',
+            title: 'Exegese Sem Complicação',
+            desc: 'Acesso direto ao texto original (Hebraico e Grego) sem a necessidade de anos de seminário. Ferramentas práticas para tradução e interpretação.'
+        },
+        {
+            icon: '🏛️',
+            title: 'Contexto Histórico',
+            desc: 'Viagem no tempo através da arqueologia e sociologia bíblica. Entenda os costumes, o clima e as tensões políticas da época.'
+        },
+        {
+            icon: '👑',
+            title: 'Nível Ministerial',
+            desc: 'Conteúdo denso preparado para pastores, líderes e vocacionados que não se contentam com o básico. Teologia robusta com aplicação prática.'
+        }
+    ];
+
+    return (
+        <section id="diferencial" className="vitrine-section vitrine-section--surface">
+            <div className="vitrine-container">
+                <div className="vitrine-section__header" data-reveal>
+                    <h2 className="vitrine-section__title">O Diferencial Brugger Co</h2>
+                    <div className="vitrine-divider-bar" />
+                </div>
+
+                <div className="vitrine-value-grid">
+                    {props.map((p, i) => (
+                        <div key={i} className="vitrine-value-card" data-reveal style={{ transitionDelay: `${i * 0.15}s` }}>
+                            <div className="vitrine-value-card__icon">{p.icon}</div>
+                            <h3 className="vitrine-value-card__title">{p.title}</h3>
+                            <p className="vitrine-value-card__desc">{p.desc}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </section>
+    );
+}
+
+// ─── Change #5: Horizontal scrollable carousel row ────────────────────────────
+function CarouselRow({ title, icon, products: rowProducts, badgeStyle }) {
+    const scrollRef = useRef(null);
+    const needsScroll = rowProducts.length > 3;
+
+    const scroll = (dir) => {
+        if (!scrollRef.current) return;
+        const cardWidth = scrollRef.current.querySelector('.vitrine-mini-card')?.offsetWidth || 360;
+        scrollRef.current.scrollBy({ left: dir * (cardWidth + 20), behavior: 'smooth' });
+    };
+
+    return (
+        <div className="vitrine-carousel-section" data-reveal>
+            <div className="vitrine-carousel__header">
+                <h3 className="vitrine-carousel__title">
+                    {title}
+                </h3>
+                {needsScroll && (
+                    <div className="vitrine-carousel__nav">
+                        <button onClick={() => scroll(-1)} className="vitrine-carousel__arrow">←</button>
+                        <button onClick={() => scroll(1)} className="vitrine-carousel__arrow">→</button>
+                    </div>
+                )}
+            </div>
+            <div
+                ref={scrollRef}
+                className={`vitrine-carousel-grid ${needsScroll ? 'vitrine-carousel-grid--scrollable' : ''}`}
+            >
+                {rowProducts.map(product => (
+                    <MiniCard key={product.id} product={product} badgeStyle={badgeStyle} />
+                ))}
+            </div>
+        </div>
+    );
+}
+
+// ─── Change #1: 4:5 cover + Change #2: only Completo btn + Change #3: longer desc ─
+function MiniCard({ product, badgeStyle }) {
+    const links = getBestLinks(product);
+    const available = hasCheckout(product);
+    const desc = PRODUCT_DESCRIPTIONS[product.id] || {};
+
+    return (
+        <div className={`vitrine-mini-card ${!available ? 'vitrine-mini-card--dim' : ''}`}>
+            {/* 4:5 aspect ratio cover for ALL cards */}
+            <div className="vitrine-mini-card__cover">
+                <div className="vitrine-mini-card__gradient" />
+                <div className={`vitrine-mini-card__badge ${badgeStyle === 'solid' ? 'vitrine-mini-card__badge--solid' : ''}`}>
+                    {!available ? 'Em Breve' : badgeStyle === 'solid' ? 'Mais Vendido' : 'Lançamento'}
+                </div>
+                <span className="vitrine-mini-card__icon">{product.icon}</span>
+            </div>
+
+            <div className="vitrine-mini-card__body">
+                <h3 className="vitrine-mini-card__title">{product.name}</h3>
+                <p className="vitrine-mini-card__tagline">{desc.tagline || product.description}</p>
+
+                {/* Change #3: longer product description */}
+                {desc.full && (
+                    <p className="vitrine-mini-card__full-desc">{desc.full}</p>
+                )}
+
+                {available ? (
+                    <div className="vitrine-mini-card__actions">
+                        {/* Change #2: Only "Completo" button */}
+                        <a href={links.checkoutFull || links.checkoutBasic || links.url}
+                            target="_blank" rel="noopener noreferrer"
+                            className="vitrine-btn vitrine-btn--primary vitrine-btn--sm vitrine-btn--full">
+                            Adquirir Agora →
+                        </a>
+                    </div>
+                ) : (
+                    <div className="vitrine-mini-card__actions">
+                        <button className="vitrine-btn vitrine-btn--outline vitrine-btn--sm vitrine-btn--full">
+                            🔔 Me Avise no Lançamento
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ─── Change #4: Same UI for "Todos os Produtos" (ProductCard) ─────────────────
 function ProductCard({ product }) {
-    const [hovered, setHovered] = useState(false);
-    const copy = PRODUCT_COPY[product.id] || {};
-    const cat = CATEGORY_STYLE[product.category];
+    const desc = PRODUCT_DESCRIPTIONS[product.id] || {};
     const hl = HIGHLIGHTS[product.id];
     const links = getBestLinks(product);
-    const hasLinks = !!(links.checkoutBasic || links.checkoutFull || links.url);
+    const available = hasCheckout(product);
     const langCount = getLangCount(product);
 
     return (
-        <article
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={{
-                position: 'relative',
-                background: hovered && hasLinks ? '#222228' : '#1A1A1F',
-                border: `1px solid ${hovered && hasLinks ? '#3A3A45' : '#2A2A32'}`,
-                borderRadius: '16px',
-                padding: '1.5rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1rem',
-                transition: 'all 0.2s ease',
-                opacity: hasLinks ? 1 : 0.5,
-                boxShadow: hovered && hasLinks
-                    ? '0 0 0 1px rgba(201,169,98,0.12), 0 8px 28px rgba(0,0,0,0.38)'
-                    : '0 2px 8px rgba(0,0,0,0.22)',
-                minHeight: '380px'
-            }}
-        >
-            {/* Highlight badge */}
+        <article className={`vitrine-product-card ${!available ? 'vitrine-product-card--dim' : ''}`}>
             {hl && (
-                <div style={{
-                    position: 'absolute',
-                    top: 0,
-                    right: '1.25rem',
-                    background: hl.color,
-                    color: hl.textColor,
-                    fontSize: '0.58rem',
-                    fontWeight: 800,
-                    letterSpacing: '0.12em',
-                    padding: '0.22rem 0.65rem',
-                    borderRadius: '0 0 7px 7px',
-                    textTransform: 'uppercase'
-                }}>
-                    {hl.label}
-                </div>
+                <div className="vitrine-product-card__highlight">{hl.label}</div>
             )}
 
-            {/* Icon + Category badge */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '2.25rem', lineHeight: 1 }}>{product.icon}</span>
-                <span style={{
-                    background: cat.bg,
-                    color: cat.color,
-                    border: `1px solid ${cat.border}`,
-                    borderRadius: '5px',
-                    fontSize: '0.6rem',
-                    fontWeight: 700,
-                    letterSpacing: '0.09em',
-                    padding: '0.22rem 0.6rem',
-                    textTransform: 'uppercase'
-                }}>
-                    {CATEGORY_LABELS[product.category]}
-                </span>
+            <div className="vitrine-product-card__header">
+                <span className="vitrine-product-card__icon">{product.icon}</span>
+                <span className="vitrine-product-card__cat">{CATEGORY_LABELS[product.category]}</span>
             </div>
 
-            {/* Title + Tagline */}
-            <div>
-                <h3 style={{
-                    fontFamily: "'DM Serif Display', Georgia, serif",
-                    fontSize: '1.3rem',
-                    color: '#FAFAFA',
-                    fontWeight: 400,
-                    lineHeight: 1.25,
-                    marginBottom: '0.4rem'
-                }}>
-                    {product.name}
-                </h3>
-                <p style={{
-                    fontSize: '0.81rem',
-                    color: '#A0A0A8',
-                    lineHeight: 1.55
-                }}>
-                    {copy.tagline || product.description}
+            <div className="vitrine-product-card__content">
+                <h3 className="vitrine-product-card__title">{product.name}</h3>
+                <p className="vitrine-product-card__tagline">
+                    {desc.tagline || product.description}
                 </p>
+
+                {desc.benefits && (
+                    <ul className="vitrine-product-card__benefits">
+                        {desc.benefits.map((b, i) => (
+                            <li key={i}>
+                                <span className="vitrine-check">✓</span>
+                                {b}
+                            </li>
+                        ))}
+                    </ul>
+                )}
             </div>
 
-            {/* Benefits list */}
-            {copy.benefits && (
-                <ul style={{
-                    listStyle: 'none',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.38rem',
-                    flex: 1
-                }}>
-                    {copy.benefits.map((benefit, i) => (
-                        <li key={i} style={{
-                            display: 'flex',
-                            gap: '0.5rem',
-                            alignItems: 'flex-start',
-                            fontSize: '0.79rem',
-                            color: '#A0A0A8',
-                            lineHeight: 1.45
-                        }}>
-                            <span style={{
-                                color: '#4ADE80',
-                                flexShrink: 0,
-                                fontWeight: 700,
-                                fontSize: '0.82rem',
-                                marginTop: '0.05rem'
-                            }}>✓</span>
-                            {benefit}
-                        </li>
-                    ))}
-                </ul>
-            )}
-
-            {/* Divider */}
-            <div style={{ borderTop: '1px solid #2A2A32' }} />
-
-            {/* Footer: lang count + CTAs */}
-            <div>
+            <div className="vitrine-product-card__footer">
                 {langCount > 0 && (
-                    <div style={{
-                        fontSize: '0.71rem',
-                        color: '#6B6B75',
-                        marginBottom: '0.75rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.3rem'
-                    }}>
-                        🌍 Disponível em{' '}
-                        <span style={{ color: '#C9A962', fontWeight: 600 }}>
-                            {langCount} idioma{langCount !== 1 ? 's' : ''}
-                        </span>
+                    <div className="vitrine-product-card__langs">
+                        🌍 Disponível em <span className="vitrine-gold">{langCount} idioma{langCount !== 1 ? 's' : ''}</span>
                     </div>
                 )}
 
-                {hasLinks ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                        {/* Checkout buttons */}
-                        {(links.checkoutBasic || links.checkoutFull) && (
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                {links.checkoutBasic && (
-                                    <a
-                                        href={links.checkoutBasic}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        style={{
-                                            flex: 1,
-                                            textAlign: 'center',
-                                            background: '#C9A962',
-                                            color: '#0C0C0E',
-                                            fontWeight: 700,
-                                            fontSize: '0.8rem',
-                                            padding: '0.62rem 0.75rem',
-                                            borderRadius: '10px',
-                                            textDecoration: 'none',
-                                            fontFamily: "'DM Sans', sans-serif",
-                                            transition: 'background 0.15s ease',
-                                            display: 'block'
-                                        }}
-                                        onMouseEnter={e => e.currentTarget.style.background = '#DFC07A'}
-                                        onMouseLeave={e => e.currentTarget.style.background = '#C9A962'}
-                                    >
-                                        {links.checkoutFull ? 'Plano Básico' : 'Adquirir Agora'} →
-                                    </a>
-                                )}
-                                {links.checkoutFull && (
-                                    <a
-                                        href={links.checkoutFull}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        style={{
-                                            flex: 1,
-                                            textAlign: 'center',
-                                            background: 'transparent',
-                                            color: '#C9A962',
-                                            border: '1px solid #C9A962',
-                                            fontWeight: 700,
-                                            fontSize: '0.8rem',
-                                            padding: '0.62rem 0.75rem',
-                                            borderRadius: '10px',
-                                            textDecoration: 'none',
-                                            fontFamily: "'DM Sans', sans-serif",
-                                            display: 'block'
-                                        }}
-                                        onMouseEnter={e => {
-                                            e.currentTarget.style.background = 'rgba(201,169,98,0.1)';
-                                        }}
-                                        onMouseLeave={e => {
-                                            e.currentTarget.style.background = 'transparent';
-                                        }}
-                                    >
-                                        ✦ Plano Completo
-                                    </a>
-                                )}
-                            </div>
-                        )}
-
-                        {/* "Ver produto" only when no checkout */}
-                        {links.url && !links.checkoutBasic && !links.checkoutFull && (
-                            <a
-                                href={links.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                    textAlign: 'center',
-                                    background: '#C9A962',
-                                    color: '#0C0C0E',
-                                    fontWeight: 700,
-                                    fontSize: '0.8rem',
-                                    padding: '0.62rem 0.75rem',
-                                    borderRadius: '10px',
-                                    textDecoration: 'none',
-                                    display: 'block'
-                                }}
-                            >
-                                Ver Produto →
-                            </a>
-                        )}
-
-                        {/* Subtle "see presentation" link */}
-                        {links.url && (links.checkoutBasic || links.checkoutFull) && (
-                            <a
-                                href={links.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                    textAlign: 'center',
-                                    color: '#6B6B75',
-                                    fontSize: '0.73rem',
-                                    textDecoration: 'none',
-                                    padding: '0.2rem',
-                                    display: 'block',
-                                    transition: 'color 0.15s'
-                                }}
-                                onMouseEnter={e => e.currentTarget.style.color = '#A0A0A8'}
-                                onMouseLeave={e => e.currentTarget.style.color = '#6B6B75'}
-                            >
+                {available ? (
+                    <div className="vitrine-product-card__ctas">
+                        {/* Change #2: Only primary/full button */}
+                        <a href={links.checkoutFull || links.checkoutBasic || links.url}
+                            target="_blank" rel="noopener noreferrer"
+                            className="vitrine-btn vitrine-btn--primary vitrine-btn--sm vitrine-btn--full">
+                            Adquirir Agora →
+                        </a>
+                        {links.url && (
+                            <a href={links.url} target="_blank" rel="noopener noreferrer"
+                                className="vitrine-product-card__link">
                                 Ver apresentação ↗
                             </a>
                         )}
                     </div>
                 ) : (
-                    <div style={{
-                        textAlign: 'center',
-                        padding: '0.7rem',
-                        background: 'rgba(255,255,255,0.025)',
-                        border: '1px dashed rgba(255,255,255,0.08)',
-                        borderRadius: '10px',
-                        fontSize: '0.8rem',
-                        color: '#6B6B75',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.4rem'
-                    }}>
-                        <span>🔔</span> Em breve
+                    <div className="vitrine-product-card__coming-soon">
+                        🔔 Em breve
                     </div>
                 )}
             </div>
@@ -432,374 +459,176 @@ function ProductCard({ product }) {
     );
 }
 
-// ─── StatsItem ────────────────────────────────────────────────────────────────
-function StatItem({ value, label }) {
+function TestimonialsSection() {
     return (
-        <div style={{ textAlign: 'center' }}>
-            <div style={{
-                fontFamily: "'DM Serif Display', Georgia, serif",
-                fontSize: '1.75rem',
-                color: '#C9A962',
-                lineHeight: 1
-            }}>
-                {value}
+        <section className="vitrine-section vitrine-section--surface">
+            <div className="vitrine-container">
+                <div className="vitrine-section__header">
+                    <div className="vitrine-badge">Depoimentos</div>
+                    <h2 className="vitrine-section__title vitrine-section__title--italic">
+                        O que nossos <span className="vitrine-gold">alunos dizem</span>
+                    </h2>
+                    <div className="vitrine-divider-bar" />
+                    <p className="vitrine-section__sub">
+                        Junte-se a uma comunidade de estudiosos apaixonados pela Palavra.
+                    </p>
+                </div>
+
+                <div className="vitrine-testimonials-grid">
+                    {TESTIMONIALS.map((t, i) => (
+                        <div key={i} className="vitrine-testimonial-card">
+                            <div className="vitrine-testimonial-card__stars">
+                                {'★★★★★'.split('').map((s, j) => (
+                                    <span key={j} className="vitrine-star">{s}</span>
+                                ))}
+                            </div>
+                            <p className="vitrine-testimonial-card__text">"{t.text}"</p>
+                            <div className="vitrine-testimonial-card__author">
+                                <div className="vitrine-testimonial-card__avatar">
+                                    {t.name.charAt(0)}
+                                </div>
+                                <div>
+                                    <div className="vitrine-testimonial-card__name">{t.name}</div>
+                                    <div className="vitrine-testimonial-card__role">{t.role}</div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#6B6B75', marginTop: '0.2rem' }}>
-                {label}
-            </div>
-        </div>
+        </section>
     );
 }
 
-// ─── ValueProp ────────────────────────────────────────────────────────────────
-function ValueProp({ icon, title, desc }) {
+// ─── Change #6: New Final CTA buttons ─────────────────────────────────────────
+function FinalCTA() {
     return (
-        <div style={{
-            background: '#131316',
-            border: '1px solid #2A2A32',
-            borderRadius: '10px',
-            padding: '1.125rem 1.25rem',
-            display: 'flex',
-            gap: '0.875rem',
-            alignItems: 'flex-start'
-        }}>
-            <span style={{ fontSize: '1.4rem', flexShrink: 0, lineHeight: 1, marginTop: '0.1rem' }}>
-                {icon}
-            </span>
-            <div>
-                <div style={{
-                    fontWeight: 600,
-                    fontSize: '0.875rem',
-                    color: '#FAFAFA',
-                    marginBottom: '0.2rem'
-                }}>
-                    {title}
-                </div>
-                <div style={{ fontSize: '0.78rem', color: '#A0A0A8', lineHeight: 1.5 }}>
-                    {desc}
+        <section className="vitrine-final-cta" data-reveal>
+            <div className="vitrine-final-cta__glow" />
+            <div className="vitrine-container" style={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                <h2 className="vitrine-final-cta__title">Sua jornada começa agora.</h2>
+                <p className="vitrine-final-cta__sub">
+                    Não aceite o conhecimento superficial. Una-se a milhares de alunos
+                    que decidiram levar o estudo da Palavra ao próximo nível.
+                </p>
+                <div className="vitrine-final-cta__actions">
+                    <a href="#" className="vitrine-btn vitrine-btn--primary vitrine-btn--xl vitrine-btn--glow">
+                        Comprar Acesso Ilimitado
+                    </a>
+                    <a href="#" className="vitrine-btn vitrine-btn--outline vitrine-btn--xl">
+                        Conversar com Consultor Teológico
+                    </a>
                 </div>
             </div>
-        </div>
-    );
-}
-
-// ─── SectionDivider ───────────────────────────────────────────────────────────
-function SectionDivider({ label, count }) {
-    return (
-        <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '1rem',
-            marginBottom: '1.25rem',
-            marginTop: '0.5rem'
-        }}>
-            <div style={{ flex: 1, height: '1px', background: '#2A2A32' }} />
-            <span style={{
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                color: '#6B6B75',
-                letterSpacing: '0.12em',
-                textTransform: 'uppercase',
-                whiteSpace: 'nowrap'
-            }}>
-                {label} {count !== undefined && `· ${count} produto${count !== 1 ? 's' : ''}`}
-            </span>
-            <div style={{ flex: 1, height: '1px', background: '#2A2A32' }} />
-        </div>
+        </section>
     );
 }
 
 // ─── Main Vitrine Page ────────────────────────────────────────────────────────
 export default function Vitrine() {
     const [activeCategory, setActiveCategory] = useState('ALL');
+    const allScrollRef = useRef(null);
+    useScrollReveal();
 
     const filtered = activeCategory === 'ALL'
         ? products
         : products.filter(p => p.category === activeCategory);
 
-    const availableCount = filtered.filter(p => {
-        const links = getBestLinks(p);
-        return links.checkoutBasic || links.checkoutFull || links.url;
-    }).length;
+    const needsAllScroll = filtered.length > 3;
+
+    const scrollAll = (dir) => {
+        if (!allScrollRef.current) return;
+        const card = allScrollRef.current.querySelector('.vitrine-mini-card');
+        const cardWidth = card?.offsetWidth || 360;
+        allScrollRef.current.scrollBy({ left: dir * (cardWidth + 20), behavior: 'smooth' });
+    };
+
+    const available = products.filter(hasCheckout);
+    const upcoming = products.filter(p => !hasCheckout(p));
+
+    const highlighted = products.filter(p => HIGHLIGHTS[p.id] && hasCheckout(p));
+    const launches = available.filter(p => !HIGHLIGHTS[p.id]).slice(0, 3);
 
     return (
-        <div style={{ maxWidth: '1100px' }}>
+        <div className="vitrine-page">
+            <HeroSection />
+            <ValuePropsSection />
 
-            {/* ── Page Header ── */}
-            <div style={{ marginBottom: '2rem' }}>
-                <div style={{
-                    fontSize: '0.7rem',
-                    color: '#6B6B75',
-                    letterSpacing: '0.14em',
-                    textTransform: 'uppercase',
-                    marginBottom: '0.4rem'
-                }}>
-                    ✦ Brugger CO
-                </div>
-                <h1 style={{
-                    fontFamily: "'DM Serif Display', Georgia, serif",
-                    fontSize: '2rem',
-                    fontWeight: 400,
-                    color: '#FAFAFA',
-                    marginBottom: '0.45rem'
-                }}>
-                    Vitrine de Produtos
-                </h1>
-                <p style={{ color: '#A0A0A8', fontSize: '0.9rem' }}>
-                    Nossa coleção completa de materiais de estudo bíblico premium — pronta para compartilhar com clientes.
-                </p>
-            </div>
+            {/* ── Product Catalog ── */}
+            <section id="catalogo" className="vitrine-section">
+                <div className="vitrine-container">
 
-            {/* ── Hero Banner ── */}
-            <div style={{
-                background: 'linear-gradient(135deg, rgba(201,169,98,0.07) 0%, rgba(201,169,98,0.015) 60%, transparent 100%)',
-                border: '1px solid rgba(201,169,98,0.18)',
-                borderRadius: '16px',
-                padding: '2.75rem 2.5rem',
-                marginBottom: '1.5rem',
-                position: 'relative',
-                overflow: 'hidden'
-            }}>
-                {/* Ornament */}
-                <div style={{
-                    position: 'absolute',
-                    right: '2rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    fontSize: '10rem',
-                    opacity: 0.035,
-                    lineHeight: 1,
-                    userSelect: 'none',
-                    fontFamily: "'DM Serif Display', Georgia, serif",
-                    color: '#C9A962'
-                }}>
-                    ✦
-                </div>
+                    {launches.length > 0 && (
+                        <CarouselRow
+                            title="Lançamentos"
+                            products={launches}
+                            badgeStyle="outline"
+                        />
+                    )}
 
-                <div style={{ maxWidth: '580px', position: 'relative' }}>
-                    {/* Badge */}
-                    <div style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                        background: 'rgba(201,169,98,0.1)',
-                        border: '1px solid rgba(201,169,98,0.25)',
-                        color: '#C9A962',
-                        borderRadius: '100px',
-                        padding: '0.3rem 1rem',
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        letterSpacing: '0.12em',
-                        textTransform: 'uppercase',
-                        marginBottom: '1.25rem'
-                    }}>
-                        ✦ Coleção Completa Saber Cristão
-                    </div>
+                    {highlighted.length > 0 && (
+                        <CarouselRow
+                            title="Mais Vendidos"
+                            products={highlighted}
+                            badgeStyle="solid"
+                        />
+                    )}
 
-                    <h2 style={{
-                        fontFamily: "'DM Serif Display', Georgia, serif",
-                        fontSize: '2.5rem',
-                        fontWeight: 400,
-                        lineHeight: 1.2,
-                        marginBottom: '1rem',
-                        color: '#FAFAFA'
-                    }}>
-                        Mergulhe nas Profundezas da{' '}
-                        <span style={{ color: '#C9A962' }}>Palavra de Deus</span>{' '}
-                        com a Clareza que Você Sempre Buscou
-                    </h2>
+                    {upcoming.length > 0 && (
+                        <CarouselRow
+                            title="Em Breve"
+                            products={upcoming}
+                            badgeStyle="coming"
+                        />
+                    )}
 
-                    <p style={{
-                        fontSize: '0.97rem',
-                        color: '#A0A0A8',
-                        lineHeight: 1.75,
-                        marginBottom: '2rem'
-                    }}>
-                        A Bíblia Explicativa transforma cada livro sagrado em um estudo profundo,
-                        acessível e transformador — para quem leva a fé a sério.
-                    </p>
+                    {/* ── All Products (single-row carousel) ── */}
+                    <div className="vitrine-carousel-section">
+                        <div className="vitrine-carousel__header">
+                            <div>
+                                <h2 className="vitrine-section__title vitrine-section__title--italic">
+                                    Todos os <span className="vitrine-gold">Produtos</span>
+                                </h2>
+                                <p className="vitrine-section__sub">
+                                    Explore nosso catálogo completo com filtros especializados.
+                                </p>
+                            </div>
 
-                    <div style={{ display: 'flex', gap: '2.5rem' }}>
-                        <StatItem value="13" label="Produtos" />
-                        <StatItem value="6" label="Idiomas" />
-                        <StatItem value="+10 mil" label="Alunos" />
-                    </div>
-                </div>
-            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <div className="vitrine-filters">
+                                    {FILTER_CATEGORIES.map(cat => (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => setActiveCategory(cat.id)}
+                                            className={`vitrine-filter-btn ${activeCategory === cat.id ? 'vitrine-filter-btn--active' : ''}`}
+                                        >
+                                            {cat.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {needsAllScroll && (
+                                    <div className="vitrine-carousel__nav">
+                                        <button onClick={() => scrollAll(-1)} className="vitrine-carousel__arrow">←</button>
+                                        <button onClick={() => scrollAll(1)} className="vitrine-carousel__arrow">→</button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
-            {/* ── Value Props ── */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '0.875rem',
-                marginBottom: '2.25rem'
-            }}>
-                <ValueProp
-                    icon="📖"
-                    title="Exegese Sem Complicação"
-                    desc="Comentários teológicos rigorosos em linguagem clara, sem perder a profundidade que a Palavra merece"
-                />
-                <ValueProp
-                    icon="🏛️"
-                    title="Contexto Histórico e Cultural"
-                    desc="Entenda cada passagem no contexto original — quem escreveu, para quem, quando e por quê"
-                />
-                <ValueProp
-                    icon="👑"
-                    title="Nível Ministerial"
-                    desc="Desenvolvido para pastores, líderes e cristãos que ensinam a Palavra com autoridade e convicção"
-                />
-            </div>
-
-            {/* ── Category Filter ── */}
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                marginBottom: '1.75rem',
-                flexWrap: 'wrap'
-            }}>
-                {FILTER_CATEGORIES.map(cat => {
-                    const isActive = activeCategory === cat.id;
-                    return (
-                        <button
-                            key={cat.id}
-                            onClick={() => setActiveCategory(cat.id)}
-                            style={{
-                                background: isActive ? '#C9A962' : '#131316',
-                                color: isActive ? '#0C0C0E' : '#A0A0A8',
-                                border: `1px solid ${isActive ? 'transparent' : '#2A2A32'}`,
-                                borderRadius: '100px',
-                                padding: '0.45rem 1.125rem',
-                                fontSize: '0.83rem',
-                                fontWeight: isActive ? 700 : 500,
-                                cursor: 'pointer',
-                                fontFamily: "'DM Sans', sans-serif",
-                                transition: 'all 0.15s ease'
-                            }}
+                        <div
+                            ref={allScrollRef}
+                            className={`vitrine-carousel-grid ${needsAllScroll ? 'vitrine-carousel-grid--scrollable' : ''}`}
                         >
-                            {cat.label}
-                        </button>
-                    );
-                })}
-                <span style={{
-                    marginLeft: 'auto',
-                    fontSize: '0.75rem',
-                    color: '#6B6B75'
-                }}>
-                    {availableCount} disponíve{availableCount !== 1 ? 'is' : 'l'} de {filtered.length}
-                </span>
-            </div>
-
-            {/* ── Products Grid ── */}
-            {activeCategory === 'ALL' ? (
-                <>
-                    {/* AT Section */}
-                    <SectionDivider
-                        label="Antigo Testamento"
-                        count={products.filter(p => p.category === 'AT').length}
-                    />
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))',
-                        gap: '1.125rem',
-                        marginBottom: '2rem'
-                    }}>
-                        {products.filter(p => p.category === 'AT').map(p => (
-                            <ProductCard key={p.id} product={p} />
-                        ))}
+                            {filtered.map(p => (
+                                <MiniCard key={p.id} product={p} badgeStyle={HIGHLIGHTS[p.id] ? 'solid' : hasCheckout(p) ? 'outline' : 'coming'} />
+                            ))}
+                        </div>
                     </div>
-
-                    {/* NT Section */}
-                    <SectionDivider
-                        label="Novo Testamento"
-                        count={products.filter(p => p.category === 'NT').length}
-                    />
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))',
-                        gap: '1.125rem',
-                        marginBottom: '2rem'
-                    }}>
-                        {products.filter(p => p.category === 'NT').map(p => (
-                            <ProductCard key={p.id} product={p} />
-                        ))}
-                    </div>
-
-                    {/* COMBO Section */}
-                    <SectionDivider
-                        label="Combos & Cursos"
-                        count={products.filter(p => p.category === 'COMBO').length}
-                    />
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))',
-                        gap: '1.125rem',
-                        marginBottom: '2.5rem'
-                    }}>
-                        {products.filter(p => p.category === 'COMBO').map(p => (
-                            <ProductCard key={p.id} product={p} />
-                        ))}
-                    </div>
-                </>
-            ) : (
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))',
-                    gap: '1.125rem',
-                    marginBottom: '2.5rem'
-                }}>
-                    {filtered.map(p => <ProductCard key={p.id} product={p} />)}
                 </div>
-            )}
+            </section>
 
-            {/* ── Bottom CTA ── */}
-            <div style={{
-                textAlign: 'center',
-                padding: '2.5rem 2rem',
-                background: 'linear-gradient(135deg, rgba(201,169,98,0.06) 0%, rgba(201,169,98,0.02) 100%)',
-                border: '1px solid rgba(201,169,98,0.14)',
-                borderRadius: '16px',
-                marginBottom: '1.5rem'
-            }}>
-                <div style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '48px',
-                    height: '48px',
-                    background: 'rgba(201,169,98,0.1)',
-                    border: '1px solid rgba(201,169,98,0.2)',
-                    borderRadius: '50%',
-                    fontSize: '1.4rem',
-                    marginBottom: '1rem'
-                }}>
-                    ✉️
-                </div>
-                <h3 style={{
-                    fontFamily: "'DM Serif Display', Georgia, serif",
-                    fontSize: '1.6rem',
-                    fontWeight: 400,
-                    color: '#FAFAFA',
-                    marginBottom: '0.6rem',
-                    lineHeight: 1.3
-                }}>
-                    Sua jornada nas profundezas da{' '}
-                    <span style={{ color: '#C9A962' }}>Palavra de Deus</span>{' '}
-                    começa agora
-                </h3>
-                <p style={{
-                    fontSize: '0.9rem',
-                    color: '#A0A0A8',
-                    maxWidth: '480px',
-                    margin: '0 auto',
-                    lineHeight: 1.7
-                }}>
-                    Junte-se a milhares de cristãos que já transformaram o seu estudo bíblico.
-                    Escolha o seu produto, aprofunde a sua fé e seja equipado para ensinar a
-                    Palavra com autoridade e clareza.
-                </p>
-            </div>
+            <TestimonialsSection />
+            <FinalCTA />
         </div>
     );
 }
