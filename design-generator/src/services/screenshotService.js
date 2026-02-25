@@ -48,14 +48,16 @@ async function captureWithScreenshotOne(url) {
             if (!response.ok) throw new Error(`API error ${response.status}`);
 
             const blob = await response.blob();
-            const dataUrl = await blobToDataUrl(blob);
+            const rawDataUrl = await blobToDataUrl(blob);
+            const optimizedDataUrl = await resizeImagePayload(rawDataUrl);
+
             screenshots.push({
-                mimeType: 'image/png',
-                data: dataUrl.split(',')[1],
+                mimeType: optimizedDataUrl.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png',
+                data: optimizedDataUrl.split(',')[1],
                 label: vp.label,
                 width: vp.width,
                 height: vp.fullPage ? 'full' : vp.height,
-                dataUrl
+                dataUrl: optimizedDataUrl
             });
         } catch (err) {
             console.warn(`[ScreenshotOne] ${vp.label} failed:`, err.message);
@@ -81,14 +83,16 @@ async function captureWithMicrolink(url) {
             if (!imgRes.ok) throw new Error('Failed to download Microlink image');
 
             const blob = await imgRes.blob();
-            const dataUrl = await blobToDataUrl(blob);
+            const rawDataUrl = await blobToDataUrl(blob);
+            const optimizedDataUrl = await resizeImagePayload(rawDataUrl);
+
             screenshots.push({
-                mimeType: 'image/png',
-                data: dataUrl.split(',')[1],
+                mimeType: optimizedDataUrl.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png',
+                data: optimizedDataUrl.split(',')[1],
                 label: 'Desktop Full Page (Fallback)',
                 width: data.data.screenshot.width || 1280,
                 height: data.data.screenshot.height || 'full',
-                dataUrl
+                dataUrl: optimizedDataUrl
             });
         }
     } catch (err) {
@@ -102,6 +106,50 @@ async function captureWithMicrolink(url) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Resizes a base64 image if it exceeds the maxDimension.
+ * This prevents 400 Bad Request errors from Claude/OpenRouter when processing huge full-page screenshots.
+ * Anthropic has a strict 8000px limit on image dimensions.
+ */
+async function resizeImagePayload(dataUrl, maxDimension = 7500) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            let { width, height } = img;
+
+            if (width <= maxDimension && height <= maxDimension) {
+                resolve(dataUrl); // No resize needed
+                return;
+            }
+
+            // Calculate new dimensions keeping aspect ratio
+            if (width > height) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+            } else {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+
+            // Fill with white background in case of transparency
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Convert to JPEG for better compression of large images
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => resolve(dataUrl); // Fallback to original if load fails
+        img.src = dataUrl;
+    });
+}
+
 function blobToDataUrl(blob) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();

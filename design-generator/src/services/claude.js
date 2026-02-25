@@ -1,8 +1,8 @@
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_CLAUDE_API_KEY;
-const DEFAULT_MODEL = 'anthropic/claude-3.7-sonnet';
+const DEFAULT_MODEL = 'anthropic/claude-sonnet-4.6';
 
 export const LLM_MODELS = [
-    { id: 'anthropic/claude-3.7-sonnet', name: 'Claude Sonnet 3.7', icon: '🟣' },
+    { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', icon: '🟣' },
     { id: 'x-ai/grok-4-fast', name: 'Grok 4.1 Fast', icon: '⚡' },
     { id: 'deepseek/deepseek-r1', name: 'DeepSeek 3.2', icon: '🔵' },
     { id: 'openai/gpt-oss-120b', name: 'GPT-oss-120b', icon: '🟢' }
