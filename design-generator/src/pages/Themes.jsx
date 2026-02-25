@@ -39,6 +39,7 @@ export default function Themes() {
     const [previewHtml, setPreviewHtml] = useState('');
     const [screenshots, setScreenshots] = useState([]);
     const [visualAnalysis, setVisualAnalysis] = useState(null);
+    const [stepStatus, setStepStatus] = useState({});
     const [savedThemes, setSavedThemes] = useState([]);
     const [copiedCSS, setCopiedCSS] = useState(false);
     const [error, setError] = useState('');
@@ -97,28 +98,54 @@ export default function Themes() {
         setPreviewHtml('');
         setScreenshots([]);
         setVisualAnalysis(null);
+        setStepStatus({});
         setCurrentStep(0);
+
+        const status = {};
+        const updateStatus = (step, icon, msg) => {
+            status[step] = { icon, msg };
+            setStepStatus({ ...status });
+        };
 
         try {
             // ── Step 1: Fetch CSS + HTML via proxy ──
             let siteData = null;
             const firstUrl = urls.trim() ? urls.trim().split(',')[0].trim() : null;
             if (firstUrl) {
-                siteData = await fetchSiteStyles(firstUrl);
+                try {
+                    siteData = await fetchSiteStyles(firstUrl);
+                    if (siteData?.success) {
+                        const cssSize = siteData.css ? `${(siteData.css.length / 1024).toFixed(1)}KB` : '0KB';
+                        updateStatus('fetch', '✅', `CSS extraído (${cssSize})`);
+                    } else {
+                        updateStatus('fetch', '⚠️', 'CSS parcial ou indisponível');
+                    }
+                } catch {
+                    updateStatus('fetch', '❌', 'Falha ao buscar CSS');
+                }
+            } else {
+                updateStatus('fetch', '⏭️', 'Nenhuma URL — pulado');
             }
 
             setCurrentStep(1);
 
-            // ── Step 2: Capture screenshots (desktop + mobile) ──
+            // ── Step 2: Capture screenshots (ScreenshotOne API) ──
             let capturedScreenshots = [];
             if (firstUrl) {
                 try {
-                    const result = await captureScreenshots(firstUrl);
-                    capturedScreenshots = result.screenshots || [];
+                    const ssResult = await captureScreenshots(firstUrl);
+                    capturedScreenshots = ssResult.screenshots || [];
                     setScreenshots(capturedScreenshots);
+                    if (capturedScreenshots.length > 0) {
+                        updateStatus('screenshot', '✅', `${capturedScreenshots.length} screenshot(s) capturado(s)`);
+                    } else {
+                        updateStatus('screenshot', '❌', ssResult.error || 'Nenhum screenshot capturado');
+                    }
                 } catch (ssErr) {
-                    console.warn('Screenshot capture failed:', ssErr.message);
+                    updateStatus('screenshot', '❌', ssErr.message);
                 }
+            } else {
+                updateStatus('screenshot', '⏭️', 'Nenhuma URL — pulado');
             }
 
             setCurrentStep(2);
@@ -148,12 +175,30 @@ export default function Themes() {
                         visionResult = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
                     }
                     setVisualAnalysis(visionResult);
+                    updateStatus('vision', '✅', `Análise visual completa — ${visionResult?.personality?.join(', ') || 'tokens extraídos'}`);
                 } catch (vErr) {
-                    console.warn('Claude visual analysis failed:', vErr.message);
+                    updateStatus('vision', '❌', `Claude falhou: ${vErr.message}`);
                 }
+            } else {
+                updateStatus('vision', '⏭️', 'Sem imagens — análise visual pulada');
             }
 
             setCurrentStep(3);
+
+            // ── Anti-invention check ──
+            const isUrlExtraction = !!firstUrl;
+            const hasVisual = !!visionResult;
+            const hasCss = siteData?.success && siteData.css?.length > 100;
+            const hasUserImages = images.length > 0;
+
+            if (isUrlExtraction && !hasVisual && !hasCss && !hasUserImages) {
+                updateStatus('extract', '❌', 'Sem dados suficientes do site');
+                throw new Error(
+                    'Não foi possível capturar screenshots nem CSS válido deste site. ' +
+                    'Tente: (1) Verificar se a VITE_SCREENSHOT_API_KEY está configurada no .env, ' +
+                    'ou (2) Fazer upload manual de screenshots do site na seção "Screenshots".'
+                );
+            }
 
             // ── Step 4: Gemini — merge CSS + visual analysis → final tokens ──
             const prompt = buildExtractThemePrompt(name.trim(), specs.trim(), urls.trim(), siteData, visionResult);
@@ -166,14 +211,21 @@ export default function Themes() {
             }
 
             setResult(tokens);
+            updateStatus('extract', '✅', `Design System extraído${hasVisual ? ' (visual + CSS)' : hasCss ? ' (apenas CSS)' : ''}`);
             setCurrentStep(4);
 
             // ── Step 5: Generate preview ──
             try {
                 const previewPrompt = buildThemePreviewPrompt(tokens);
                 const preview = await callGemini(previewPrompt);
-                if (preview?.html) setPreviewHtml(preview.html);
+                if (preview?.html) {
+                    setPreviewHtml(preview.html);
+                    updateStatus('preview', '✅', 'Preview gerado');
+                } else {
+                    updateStatus('preview', '⚠️', 'Preview vazio');
+                }
             } catch (previewErr) {
+                updateStatus('preview', '❌', 'Falha ao gerar preview');
                 console.warn('Preview generation failed:', previewErr);
             }
 
@@ -407,6 +459,16 @@ export default function Themes() {
                                 <div className="themes-preview-loading">
                                     <div className="themes-loading-orb" />
                                     <p>{STEPS[currentStep]?.label || 'Processando...'}</p>
+                                    {Object.keys(stepStatus).length > 0 && (
+                                        <div className="themes-step-log">
+                                            {Object.entries(stepStatus).map(([key, { icon, msg }]) => (
+                                                <div key={key} className="themes-step-log-item">
+                                                    <span className="themes-step-icon">{icon}</span>
+                                                    <span className="themes-step-msg">{msg}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

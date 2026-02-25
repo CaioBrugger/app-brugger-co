@@ -360,7 +360,8 @@ export function buildExtractThemePrompt(themeName, userSpecs, referenceUrls, sit
 
   if (siteData?.success && siteData.css) {
     contextBlock = `
-## CÓDIGO CSS REAL EXTRAÍDO DA PÁGINA (FONTE DE VERDADE — USE ESTES VALORES EXATOS):
+## CSS EXTRAÍDO VIA PROXY (⚠️ PODE ESTAR INCOMPLETO — sites JS-renderizados frequentemente retornam CSS parcial):
+Use como referência SECUNDÁRIA. A análise visual (se disponível) tem PRIORIDADE sobre estes valores.
 
 ### Google Fonts encontradas:
 ${siteData.fontLinks?.join('\n') || 'Nenhuma'}
@@ -375,7 +376,7 @@ ${siteData.headings?.join('\n') || 'Nenhum'}
 ### Computed Styles dos elementos-chave:
 ${siteData.computedStyles || 'Não disponível'}
 
-### CSS completo da página (ANALISE CADA PROPRIEDADE):
+### CSS da página (PODE ESTAR FRAGMENTADO em sites modernos):
 \`\`\`css
 ${siteData.css}
 \`\`\`
@@ -396,29 +397,41 @@ METODOLOGIA: Atomic Design (Brad Frost)
 - ORGANISMS: componentes maiores (cards, navbars, heroes, seções)
 - ANIMATIONS: todo o motion design (durations, easings, hover, entrance, keyframes)
 
-TAREFA: Analisar TODAS as referências fornecidas e criar um Design System COMPLETO e DETALHADO.
-Se CSS real foi fornecido, EXTRAIA valores EXATOS. Se apenas descrição/imagem, CRIE um DS premium e coerente.
+## 🚨 REGRA ANTI-INVENÇÃO:
+${referenceUrls ? `Este tema é uma EXTRAÇÃO de um site real. Você NÃO DEVE INVENTAR valores.
+Se a análise visual ou o CSS não fornecem informação suficiente para um campo, use valores neutros conservadores (ex: #ffffff, #000000, 16px) em vez de inventar. 
+NUNCA assuma uma estética (neon, gaming, futurista, etc.) baseado apenas no nome — use APENAS dados visuais e CSS reais.` : `Nenhuma URL de referência fornecida. Crie um Design System premium e coerente baseado nas especificações do usuário.`}
+
+## HIERARQUIA DE FONTES DE VERDADE (RESPEITE ESTA ORDEM):
+1. 🥇 **ANÁLISE VISUAL (Claude Sonnet)** — Prioridade MÁXIMA. Estes dados vêm de screenshots REAIS do site.
+2. 🥈 **CSS extraído via proxy** — Referência secundária. Pode estar incompleto em sites JS-renderizados.
+3. 🥉 **Especificações do usuário** — Complemento.
 
 NOME DO TEMA: "${themeName}"
 ${userSpecs ? `\nESPECIFICAÇÕES DO USUÁRIO: "${userSpecs}"` : ''}
 ${referenceUrls ? `\nURLS DE REFERÊNCIA: ${referenceUrls}` : ''}
 ${contextBlock}
 ${visualAnalysis ? `
-## 🎯 ANÁLISE VISUAL (CLAUDE SONNET — ALTA PRIORIDADE):
-O seguinte foi extraído por um modelo de IA especialista que ANALISOU VISUALMENTE screenshots reais do site.
-Quando houver conflito entre valores do CSS e valores da análise visual, PREFIRA A ANÁLISE VISUAL — ela representa exatamente o que o usuário vê.
+## 🥇 ANÁLISE VISUAL — FONTE DE VERDADE PRIMÁRIA:
+O seguinte foi extraído por Claude Sonnet 4 que ANALISOU VISUALMENTE screenshots REAIS do site renderizado em um browser Chromium.
+Estes valores são MAIS CONFIÁVEIS que o CSS extraído. USE-OS COMO BASE PRINCIPAL.
 
 ${JSON.stringify(visualAnalysis, null, 2)}
-` : ''}
+` : `
+## ⚠️ NENHUMA ANÁLISE VISUAL DISPONÍVEL:
+Screenshots não foram capturados. ${siteData?.success ? 'Apenas CSS parcial está disponível como referência.' : 'Nenhum dado real do site está disponível.'}
+`}
 
 ## INSTRUÇÕES DE PRECISÃO:
 
 ### CORES — REGRAS ABSOLUTAS:
-- Se o CSS real foi fornecido, EXTRAIA os hex/rgb/hsl EXATOS. NÃO INVENTE.
+- Se a ANÁLISE VISUAL existe, USE os hex codes dela como PRIORIDADE. Eles são extraídos de screenshots reais.
+- CSS serve para VALIDAR e COMPLEMENTAR, não para substituir a análise visual.
 - Procure: background, color, border-color, box-shadow, gradient, --custom-properties
 - Categorize TODAS as cores por função na hierarquia atômica
 - Para rgb()/hsl(), converta para hex
 - Identifique GRADIENTES usados (direction + color stops)
+- 🚨 NÃO INVENTE cores. Se não tem dados, use neutros (#ffffff, #000000, #666666).
 
 ### TIPOGRAFIA — REGRAS ABSOLUTAS:
 - Extraia nomes EXATOS das fontes (Google Fonts links, font-family declarations)

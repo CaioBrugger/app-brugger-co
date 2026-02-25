@@ -4638,6 +4638,40 @@ input::placeholder {
   color: var(--text-secondary);
 }
 
+/* Step Log — per-step status indicators */
+.themes-step-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 1.25rem;
+  text-align: left;
+  width: 100%;
+  max-width: 400px;
+}
+
+.themes-step-log-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0.3rem 0.6rem;
+  background: var(--surface);
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--border);
+}
+
+.themes-step-icon {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.themes-step-msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Result Panel */
 .themes-result {
   background: var(--surface);

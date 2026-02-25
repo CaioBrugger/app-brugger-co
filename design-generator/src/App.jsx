@@ -6,8 +6,10 @@ import Dashboard from './pages/Dashboard';
 const Gallery = lazy(() => import('./pages/Gallery'));
 const DesignGenerator = lazy(() => import('./pages/DesignGenerator'));
 const Products = lazy(() => import('./pages/Products'));
+const ProductCreator = lazy(() => import('./pages/ProductCreator'));
 const Themes = lazy(() => import('./pages/Themes'));
 const LandingPageBuilder = lazy(() => import('./pages/LandingPageBuilder'));
+const Vitrine = lazy(() => import('./pages/Vitrine'));
 const Overview = lazy(() => import('./pages/design-system/Overview'));
 const Identity = lazy(() => import('./pages/design-system/Identity'));
 const Colors = lazy(() => import('./pages/design-system/tokens/Colors'));
@@ -34,7 +36,9 @@ export default function App() {
                         <Route path="/gallery" element={<Gallery />} />
                         <Route path="/design" element={<DesignGenerator />} />
                         <Route path="/products" element={<Products />} />
+                        <Route path="/product-creator" element={<ProductCreator />} />
                         <Route path="/themes" element={<Themes />} />
+                        <Route path="/vitrine" element={<Vitrine />} />
 
                         {/* Design System Routes */}
                         <Route path="/design-system" element={<Overview />} />
