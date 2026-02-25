@@ -71,7 +71,7 @@ async function captureWithMicrolink(url) {
 
     // We capture just Desktop Full Page to save up on quota (1 request)
     try {
-        const apiUrl = `https://api.microlink.io?url=${encodeURIComponent(url)}&screenshot=true&meta=false&waitForTimeout=2000`;
+        const apiUrl = `https://api.microlink.io?url=${encodeURIComponent(url)}&screenshot=true&fullPage=true&meta=false&waitForTimeout=2000`;
         const res = await fetch(apiUrl);
         if (!res.ok) throw new Error(`Microlink fetch failed: ${res.status}`);
 
