@@ -1,8 +1,8 @@
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_CLAUDE_API_KEY;
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
+const DEFAULT_MODEL = 'anthropic/claude-3.7-sonnet';
 
 export const LLM_MODELS = [
-    { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4.6', icon: '🟣' },
+    { id: 'anthropic/claude-3.7-sonnet', name: 'Claude Sonnet 3.7', icon: '🟣' },
     { id: 'x-ai/grok-4-fast', name: 'Grok 4.1 Fast', icon: '⚡' },
     { id: 'deepseek/deepseek-r1', name: 'DeepSeek 3.2', icon: '🔵' },
     { id: 'openai/gpt-oss-120b', name: 'GPT-oss-120b', icon: '🟢' }
@@ -79,14 +79,29 @@ export async function callClaudeWithImages(systemPrompt, userPrompt, images = []
     });
 
     if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
+        let err;
+        try {
+            err = await response.json();
+        } catch {
+            err = { error: { message: `Status ${response.status}` } };
+        }
         console.error(`[OpenRouter Vision ${model}] API Error:`, err);
         throw new Error(err.error?.message || `Erro na API OpenRouter Vision: ${response.status}`);
     }
 
     const data = await response.json();
+
+    // OpenRouter can sometimes return 200 OK with an error object inside
+    if (data.error) {
+        console.error(`[OpenRouter Vision ${model}] Response Error:`, data.error);
+        throw new Error(data.error.message || 'Erro desconhecido retornado pela API da OpenRouter');
+    }
+
     const text = data.choices?.[0]?.message?.content;
-    if (!text) throw new Error(`Resposta vazia de ${model} (vision) via OpenRouter`);
+    if (!text) {
+        console.error('[OpenRouter Vision] Invalid response format:', data);
+        throw new Error(`Resposta vazia ou formato inválido do modelo ${model}`);
+    }
     return text;
 }
 
