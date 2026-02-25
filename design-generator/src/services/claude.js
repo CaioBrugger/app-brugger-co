@@ -8,7 +8,7 @@ export const LLM_MODELS = [
     { id: 'openai/gpt-oss-120b', name: 'GPT-oss-120b', icon: '🟢' }
 ];
 
-async function callClaude(systemPrompt, userPrompt, model = DEFAULT_MODEL) {
+export async function callClaude(systemPrompt, userPrompt, model = DEFAULT_MODEL) {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {

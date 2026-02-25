@@ -44,12 +44,43 @@ create table if not exists public.todos (
 );
 
 -- ------------------------------------------------------------
+-- TABELA: themes (Design System Themes)
+-- ------------------------------------------------------------
+create table if not exists public.themes (
+    id            text primary key,
+    name          text not null,
+    description   text not null default '',
+    tokens        jsonb not null default '{}',
+    preview_html  text not null default '',
+    accent_colors text[] not null default '{}',
+    created_at    timestamptz not null default now()
+);
+
+-- ------------------------------------------------------------
+-- TABELA: product_ideas (AI Council & Manual)
+-- ------------------------------------------------------------
+create table if not exists public.product_ideas (
+    id            text primary key,
+    name          text not null,
+    description   text not null default '',
+    reasoning     text not null default '',
+    category      text not null default 'AT',
+    status        text not null default 'idea' check (status in ('idea','planned','in_progress','launched')),
+    price_range   text default 'low_ticket',
+    source        text default 'ai_council',
+    council_data  jsonb default '{}',
+    created_at    timestamptz not null default now()
+);
+
+-- ------------------------------------------------------------
 -- RLS: desabilitar para uso inicial (app interno sem auth)
 -- Remova estas linhas se quiser ativar autenticação no futuro
 -- ------------------------------------------------------------
-alter table public.products     disable row level security;
-alter table public.product_links disable row level security;
-alter table public.todos        disable row level security;
+alter table public.products       disable row level security;
+alter table public.product_links  disable row level security;
+alter table public.todos          disable row level security;
+alter table public.themes         disable row level security;
+alter table public.product_ideas  disable row level security;
 
 -- ============================================================
 -- SEED: Produtos

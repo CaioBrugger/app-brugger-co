@@ -16,6 +16,13 @@ function fileToBase64(file) {
     });
 }
 
+const STEPS = [
+    { id: 'analyze', label: 'Analisando referências', icon: '🔍' },
+    { id: 'extract', label: 'Extraindo Design System', icon: '⚛️' },
+    { id: 'preview', label: 'Gerando preview', icon: '🎨' },
+    { id: 'done', label: 'Concluído', icon: '✅' }
+];
+
 export default function Themes() {
     const [name, setName] = useState('');
     const [specs, setSpecs] = useState('');
@@ -23,16 +30,16 @@ export default function Themes() {
     const [images, setImages] = useState([]);
     const [previews, setPreviews] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [loadingPreview, setLoadingPreview] = useState(false);
-    const [status, setStatus] = useState('');
+    const [currentStep, setCurrentStep] = useState(-1);
     const [result, setResult] = useState(null);
     const [previewHtml, setPreviewHtml] = useState('');
     const [savedThemes, setSavedThemes] = useState([]);
-    const [selectedTheme, setSelectedTheme] = useState(null);
     const [copiedCSS, setCopiedCSS] = useState(false);
     const [error, setError] = useState('');
     const [tab, setTab] = useState('create');
+    const [galleryView, setGalleryView] = useState(null);
     const fileInputRef = useRef(null);
+    const previewRef = useRef(null);
 
     useEffect(() => {
         fetchThemes().then(setSavedThemes);
@@ -69,10 +76,12 @@ export default function Themes() {
         setError('');
     }, [images]);
 
+    const hasInput = () => name.trim() && (specs.trim() || images.length > 0 || urls.trim());
+
     const generate = async () => {
         if (!name.trim()) { setError('Dê um nome ao tema'); return; }
         if (!specs.trim() && images.length === 0 && !urls.trim()) {
-            setError('Adicione especificações, imagens ou URLs de referência');
+            setError('Adicione ao menos uma fonte: descrição, imagens ou URL');
             return;
         }
 
@@ -80,23 +89,19 @@ export default function Themes() {
         setError('');
         setResult(null);
         setPreviewHtml('');
+        setCurrentStep(0);
 
         try {
             // Step 1: Fetch real CSS from URL if provided
             let siteData = null;
             if (urls.trim()) {
-                setStatus('Analisando site de referência...');
                 const firstUrl = urls.trim().split(',')[0].trim();
                 siteData = await fetchSiteStyles(firstUrl);
-                if (siteData.success) {
-                    setStatus(`Site analisado! ${siteData.css.length} chars de CSS extraídos. Gerando DS...`);
-                } else {
-                    setStatus('Não foi possível acessar o site. Gerando com base nas especificações...');
-                }
             }
 
+            setCurrentStep(1);
+
             // Step 2: Convert uploaded images to base64
-            setStatus(siteData?.success ? 'Extraindo tokens do CSS real com IA...' : 'Extraindo Design System com IA...');
             const base64Images = await Promise.all(images.map(fileToBase64));
 
             // Step 3: Build prompt with real CSS data
@@ -110,9 +115,9 @@ export default function Themes() {
             }
 
             setResult(tokens);
-            setStatus('Gerando preview visual...');
-            setLoadingPreview(true);
+            setCurrentStep(2);
 
+            // Step 4: Generate preview
             try {
                 const previewPrompt = buildThemePreviewPrompt(tokens);
                 const preview = await callGemini(previewPrompt);
@@ -121,11 +126,10 @@ export default function Themes() {
                 console.warn('Preview generation failed:', previewErr);
             }
 
-            setLoadingPreview(false);
-            setStatus('');
+            setCurrentStep(3);
         } catch (err) {
             setError(err.message || 'Erro ao gerar tema');
-            setStatus('');
+            setCurrentStep(-1);
         } finally {
             setLoading(false);
         }
@@ -133,17 +137,21 @@ export default function Themes() {
 
     const handleSave = async () => {
         if (!result) return;
+        const atoms = result.atoms || result;
+        const colors = atoms.colors || result.colors || {};
+        const meta = result.meta || {};
+
         const theme = await saveTheme({
-            name: result.name || name,
-            description: result.description || '',
+            name: meta.name || result.name || name,
+            description: meta.description || result.description || '',
             tokens: result,
             previewHtml,
             accentColors: [
-                result.colors?.accent,
-                result.colors?.background,
-                result.colors?.text,
-                result.colors?.surface,
-                result.colors?.accentLight
+                colors.accent,
+                colors.background,
+                colors.text,
+                colors.surface,
+                colors.accentLight
             ].filter(Boolean)
         });
         setSavedThemes(prev => [theme, ...prev]);
@@ -153,7 +161,7 @@ export default function Themes() {
     const handleDelete = async (id) => {
         await deleteTheme(id);
         setSavedThemes(prev => prev.filter(t => t.id !== id));
-        if (selectedTheme?.id === id) setSelectedTheme(null);
+        if (galleryView?.id === id) setGalleryView(null);
     };
 
     const copyCSS = (css) => {
@@ -163,28 +171,40 @@ export default function Themes() {
     };
 
     const openThemeDetail = (theme) => {
-        setSelectedTheme(theme);
-        setResult(theme.tokens);
-        setPreviewHtml(theme.previewHtml || '');
-        setTab('create');
+        setGalleryView(theme);
+    };
+
+    const getTokenColors = (tokens) => {
+        if (!tokens) return {};
+        return tokens.atoms?.colors || tokens.colors || {};
+    };
+
+    const getTokenMeta = (tokens) => {
+        if (!tokens) return {};
+        return tokens.meta || { name: tokens.name, description: tokens.description, personality: tokens.personality };
+    };
+
+    const getCSS = (tokens) => {
+        if (!tokens) return '';
+        return tokens.meta?.cssVariables || tokens.cssVariables || '';
     };
 
     return (
         <div className="themes-page">
             <div className="page-header">
-                <div className="page-label">Criador de Temas</div>
-                <h1 className="page-title">Design System <span className="gold">Themes</span></h1>
+                <div className="page-label">Design System Extractor</div>
+                <h1 className="page-title">Atomic <span className="gold">Themes</span></h1>
                 <p className="page-desc">
-                    Envie referências visuais e a IA extrairá um Design System completo para você.
+                    Extraia Design Systems completos a partir de um link, imagem ou descrição. Metodologia Atomic Design.
                 </p>
             </div>
 
             <div className="themes-tabs">
                 <button className={`themes-tab ${tab === 'create' ? 'active' : ''}`} onClick={() => setTab('create')}>
-                    ✦ Criar Tema
+                    ⚛️ Extrair DS
                 </button>
                 <button className={`themes-tab ${tab === 'gallery' ? 'active' : ''}`} onClick={() => setTab('gallery')}>
-                    📁 Temas Salvos <span className="themes-tab-count">{savedThemes.length}</span>
+                    📁 Galeria <span className="themes-tab-count">{savedThemes.length}</span>
                 </button>
             </div>
 
@@ -194,236 +214,232 @@ export default function Themes() {
                         {/* Input Panel */}
                         <div className="themes-input-panel">
                             <div className="themes-field">
-                                <label className="themes-label">Nome do Tema</label>
+                                <label className="themes-label">Nome do Design System</label>
                                 <input
                                     type="text"
                                     className="themes-input"
-                                    placeholder="ex: Minimalist SaaS, Dark Premium, Neon Futuristic..."
+                                    placeholder="ex: Saber Cristão, Fintech Bold, Neo Brutalist..."
                                     value={name}
                                     onChange={e => setName(e.target.value)}
                                     disabled={loading}
                                 />
                             </div>
 
-                            <div className="themes-field">
-                                <label className="themes-label">Especificações / Descrição do Estilo</label>
-                                <textarea
-                                    className="themes-textarea"
-                                    placeholder="Descreva o visual: cores predominantes, atmosfera, tipo de produto, público-alvo, referências de estilo..."
-                                    value={specs}
-                                    onChange={e => setSpecs(e.target.value)}
-                                    rows={4}
-                                    disabled={loading}
-                                />
-                            </div>
-
-                            <div className="themes-field">
-                                <label className="themes-label">URLs de Referência <span className="themes-optional">(opcional)</span></label>
-                                <input
-                                    type="text"
-                                    className="themes-input"
-                                    placeholder="https://site-referencia.com, https://outro-exemplo.com"
-                                    value={urls}
-                                    onChange={e => setUrls(e.target.value)}
-                                    disabled={loading}
-                                />
-                            </div>
-
-                            <div className="themes-field">
-                                <label className="themes-label">Screenshots de Referência <span className="themes-optional">(até 5)</span></label>
-                                <div
-                                    className={`themes-dropzone ${images.length >= 5 ? 'full' : ''}`}
-                                    onClick={() => images.length < 5 && fileInputRef.current?.click()}
-                                    onDrop={handleDrop}
-                                    onDragOver={e => e.preventDefault()}
-                                >
-                                    {previews.length === 0 ? (
-                                        <div className="themes-dropzone-empty">
-                                            <span className="themes-dropzone-icon">🖼️</span>
-                                            <span>Clique ou arraste imagens aqui</span>
-                                            <small>PNG, JPG, WebP — até 5 arquivos</small>
-                                        </div>
-                                    ) : (
-                                        <div className="themes-dropzone-grid">
-                                            {previews.map((src, i) => (
-                                                <div key={i} className="themes-thumb">
-                                                    <img src={src} alt={`ref-${i}`} />
-                                                    <button className="themes-thumb-remove" onClick={(e) => { e.stopPropagation(); removeImage(i); }}>✕</button>
-                                                </div>
-                                            ))}
-                                            {images.length < 5 && (
-                                                <div className="themes-thumb themes-thumb-add">
-                                                    <span>+</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
+                            {/* Multimodal Input Cards */}
+                            <div className="themes-sources">
+                                <div className="themes-source-card">
+                                    <div className="themes-source-header">
+                                        <span className="themes-source-icon">🔗</span>
+                                        <span className="themes-source-title">URL de Referência</span>
+                                        {urls.trim() && <span className="themes-source-active">✓</span>}
+                                    </div>
+                                    <input
+                                        type="text"
+                                        className="themes-input themes-input-sm"
+                                        placeholder="https://exemplo.com"
+                                        value={urls}
+                                        onChange={e => setUrls(e.target.value)}
+                                        disabled={loading}
+                                    />
+                                    <small className="themes-source-hint">CSS, fontes e cores serão extraídos automaticamente</small>
                                 </div>
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    hidden
-                                    onChange={handleImageUpload}
-                                />
+
+                                <div className="themes-source-card">
+                                    <div className="themes-source-header">
+                                        <span className="themes-source-icon">🖼️</span>
+                                        <span className="themes-source-title">Screenshots</span>
+                                        {images.length > 0 && <span className="themes-source-active">✓ {images.length}</span>}
+                                    </div>
+                                    <div
+                                        className={`themes-dropzone-mini ${images.length >= 5 ? 'full' : ''}`}
+                                        onClick={() => images.length < 5 && fileInputRef.current?.click()}
+                                        onDrop={handleDrop}
+                                        onDragOver={e => e.preventDefault()}
+                                    >
+                                        {previews.length === 0 ? (
+                                            <span className="themes-dropzone-mini-text">Clique ou arraste (até 5)</span>
+                                        ) : (
+                                            <div className="themes-dropzone-mini-grid">
+                                                {previews.map((src, i) => (
+                                                    <div key={i} className="themes-thumb-mini">
+                                                        <img src={src} alt={`ref-${i}`} />
+                                                        <button className="themes-thumb-remove" onClick={(e) => { e.stopPropagation(); removeImage(i); }}>✕</button>
+                                                    </div>
+                                                ))}
+                                                {images.length < 5 && (
+                                                    <div className="themes-thumb-mini themes-thumb-add">+</div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        hidden
+                                        onChange={handleImageUpload}
+                                    />
+                                </div>
+
+                                <div className="themes-source-card themes-source-card-wide">
+                                    <div className="themes-source-header">
+                                        <span className="themes-source-icon">📝</span>
+                                        <span className="themes-source-title">Descrição do Estilo</span>
+                                        {specs.trim() && <span className="themes-source-active">✓</span>}
+                                    </div>
+                                    <textarea
+                                        className="themes-textarea"
+                                        placeholder="Descreva o visual: cores, atmosfera, tipo de produto, público-alvo, referências de estilo... Quanto mais detalhes, melhor a extração."
+                                        value={specs}
+                                        onChange={e => setSpecs(e.target.value)}
+                                        rows={3}
+                                        disabled={loading}
+                                    />
+                                </div>
                             </div>
 
                             {error && <div className="themes-error">{error}</div>}
 
-                            <button className="themes-generate-btn" onClick={generate} disabled={loading}>
+                            {/* Progress Bar */}
+                            {loading && (
+                                <div className="themes-progress">
+                                    {STEPS.map((step, i) => (
+                                        <div key={step.id} className={`themes-progress-step ${i < currentStep ? 'done' : ''} ${i === currentStep ? 'active' : ''}`}>
+                                            <span className="themes-progress-icon">{i < currentStep ? '✅' : step.icon}</span>
+                                            <span className="themes-progress-label">{step.label}</span>
+                                        </div>
+                                    ))}
+                                    <div className="themes-progress-bar">
+                                        <div className="themes-progress-fill" style={{ width: `${Math.max(5, (currentStep / (STEPS.length - 1)) * 100)}%` }} />
+                                    </div>
+                                </div>
+                            )}
+
+                            <button className="themes-generate-btn" onClick={generate} disabled={loading || !name.trim()}>
                                 {loading ? (
-                                    <><span className="themes-spinner" /> {status || 'Processando...'}</>
+                                    <><span className="themes-spinner" /> {STEPS[currentStep]?.label || 'Processando...'}</>
                                 ) : (
-                                    '✦ Gerar Design System'
+                                    '⚛️ Extrair Design System'
                                 )}
                             </button>
                         </div>
 
                         {/* Preview Panel */}
-                        <div className="themes-preview-panel">
+                        <div className="themes-preview-panel" ref={previewRef}>
                             {!result && !loading && (
                                 <div className="themes-preview-empty">
-                                    <span className="themes-preview-empty-icon">🎨</span>
-                                    <h3>Preview do Tema</h3>
-                                    <p>Preencha as informações ao lado e clique em "Gerar" para visualizar o Design System extraído.</p>
+                                    <span className="themes-preview-empty-icon">⚛️</span>
+                                    <h3>Atomic Design Preview</h3>
+                                    <p>Preencha ao menos o nome + uma fonte (URL, imagem ou descrição) e clique em "Extrair" para visualizar o Design System completo.</p>
+                                    <div className="themes-preview-atoms">
+                                        <span>Atoms</span>
+                                        <span>→</span>
+                                        <span>Molecules</span>
+                                        <span>→</span>
+                                        <span>Organisms</span>
+                                        <span>→</span>
+                                        <span>Templates</span>
+                                    </div>
                                 </div>
                             )}
 
-                            {loading && (
+                            {loading && !result && (
                                 <div className="themes-preview-loading">
-                                    <div className="themes-loading-dots">
-                                        <span /><span /><span />
-                                    </div>
-                                    <p>{status}</p>
+                                    <div className="themes-loading-orb" />
+                                    <p>{STEPS[currentStep]?.label || 'Processando...'}</p>
                                 </div>
                             )}
 
                             {result && !loading && (
                                 <div className="themes-result">
+                                    {/* Header */}
                                     <div className="themes-result-header">
                                         <div>
-                                            <h2>{result.name || name}</h2>
-                                            <p className="themes-result-desc">{result.description}</p>
-                                            {result.personality && (
+                                            <h2>{getTokenMeta(result).name || result.name || name}</h2>
+                                            <p className="themes-result-desc">{getTokenMeta(result).description || result.description}</p>
+                                            {(getTokenMeta(result).personality || result.personality) && (
                                                 <div className="themes-tags">
-                                                    {result.personality.map((t, i) => <span key={i} className="themes-tag">{t}</span>)}
+                                                    {(getTokenMeta(result).personality || result.personality || []).map((t, i) => <span key={i} className="themes-tag">{t}</span>)}
                                                 </div>
                                             )}
                                         </div>
                                         <div className="themes-result-actions">
-                                            <button className="themes-btn-save" onClick={handleSave}>💾 Salvar Tema</button>
-                                            <button className="themes-btn-secondary" onClick={() => copyCSS(result.cssVariables || '')}>
-                                                {copiedCSS ? '✓ Copiado!' : '📋 Copiar CSS'}
+                                            <button className="themes-btn-save" onClick={handleSave}>💾 Salvar</button>
+                                            <button className="themes-btn-secondary" onClick={() => copyCSS(getCSS(result))}>
+                                                {copiedCSS ? '✓ Copiado!' : '📋 CSS'}
                                             </button>
                                         </div>
                                     </div>
 
-                                    {/* Color Palette */}
-                                    {result.colors && (
-                                        <div className="themes-section">
-                                            <h3 className="themes-section-title">🎨 Paleta de Cores</h3>
-                                            <div className="themes-colors-grid">
-                                                {Object.entries(result.colors).map(([key, hex]) => (
-                                                    <div key={key} className="themes-color-swatch" onClick={() => { navigator.clipboard.writeText(hex); }}>
-                                                        <div className="themes-color-circle" style={{ background: hex }} />
-                                                        <div className="themes-color-info">
-                                                            <span className="themes-color-name">{key}</span>
-                                                            <code className="themes-color-hex">{hex}</code>
-                                                        </div>
-                                                    </div>
-                                                ))}
+                                    {/* Quick Atoms Preview */}
+                                    <div className="themes-atoms-grid">
+                                        {/* Colors Swatch */}
+                                        <div className="themes-atom-section">
+                                            <h4 className="themes-atom-title">🎨 Colors</h4>
+                                            <div className="themes-colors-row">
+                                                {Object.entries(getTokenColors(result)).map(([key, hex]) => {
+                                                    if (typeof hex !== 'string' || hex.startsWith('linear')) return null;
+                                                    return (
+                                                        <div key={key} className="themes-color-dot" title={`${key}: ${hex}`}
+                                                            onClick={() => { navigator.clipboard.writeText(hex); }}
+                                                            style={{ background: hex }}
+                                                        />
+                                                    );
+                                                })}
                                             </div>
                                         </div>
-                                    )}
 
-                                    {/* Typography */}
-                                    {result.typography && (
-                                        <div className="themes-section">
-                                            <h3 className="themes-section-title">📝 Tipografia</h3>
-                                            <div className="themes-type-families">
-                                                <div className="themes-type-row">
-                                                    <span className="themes-type-label">Heading</span>
-                                                    <span className="themes-type-value" style={{ fontFamily: result.typography.fontHeading }}>{result.typography.fontHeading}</span>
+                                        {/* Typography */}
+                                        {(result.atoms?.typography || result.typography) && (
+                                            <div className="themes-atom-section">
+                                                <h4 className="themes-atom-title">📝 Typography</h4>
+                                                <div className="themes-type-preview">
+                                                    <span className="themes-type-heading"
+                                                        style={{ fontFamily: (result.atoms?.typography || result.typography)?.fontHeading }}>
+                                                        {(result.atoms?.typography || result.typography)?.fontHeading}
+                                                    </span>
+                                                    <span className="themes-type-body"
+                                                        style={{ fontFamily: (result.atoms?.typography || result.typography)?.fontBody }}>
+                                                        {(result.atoms?.typography || result.typography)?.fontBody}
+                                                    </span>
                                                 </div>
-                                                <div className="themes-type-row">
-                                                    <span className="themes-type-label">Body</span>
-                                                    <span className="themes-type-value" style={{ fontFamily: result.typography.fontBody }}>{result.typography.fontBody}</span>
-                                                </div>
-                                                {result.typography.fontMono && (
-                                                    <div className="themes-type-row">
-                                                        <span className="themes-type-label">Mono</span>
-                                                        <span className="themes-type-value" style={{ fontFamily: result.typography.fontMono }}>{result.typography.fontMono}</span>
-                                                    </div>
-                                                )}
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
 
-                                    {/* Component Demos */}
-                                    {result.components && (
-                                        <div className="themes-section">
-                                            <h3 className="themes-section-title">🧩 Componentes</h3>
-                                            <div className="themes-components-demo">
-                                                {result.components.buttonPrimary && (
-                                                    <button style={{
-                                                        background: result.components.buttonPrimary.background,
-                                                        color: result.components.buttonPrimary.color,
-                                                        borderRadius: result.components.buttonPrimary.borderRadius,
-                                                        padding: result.components.buttonPrimary.padding,
-                                                        fontSize: result.components.buttonPrimary.fontSize,
-                                                        fontWeight: result.components.buttonPrimary.fontWeight,
-                                                        border: 'none', cursor: 'pointer'
-                                                    }}>Botão Primary</button>
-                                                )}
-                                                {result.components.buttonSecondary && (
-                                                    <button style={{
-                                                        background: result.components.buttonSecondary.background || 'transparent',
-                                                        color: result.components.buttonSecondary.color,
-                                                        border: result.components.buttonSecondary.border,
-                                                        borderRadius: result.components.buttonSecondary.borderRadius,
-                                                        padding: result.components.buttonSecondary.padding,
-                                                        cursor: 'pointer'
-                                                    }}>Botão Secondary</button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* CSS Variables */}
-                                    {result.cssVariables && (
-                                        <div className="themes-section">
-                                            <h3 className="themes-section-title">💻 CSS Variables</h3>
-                                            <div className="themes-code-block">
-                                                <div className="themes-code-header">
-                                                    <span>:root { }</span>
-                                                    <button onClick={() => copyCSS(result.cssVariables)}>
-                                                        {copiedCSS ? '✓ Copiado' : 'Copiar'}
-                                                    </button>
-                                                </div>
-                                                <pre className="themes-code-pre"><code>{result.cssVariables}</code></pre>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* HTML Preview */}
+                                    {/* Full Preview Iframe */}
                                     {previewHtml && (
                                         <div className="themes-section">
-                                            <h3 className="themes-section-title">👁️ Preview Visual</h3>
-                                            <div className="themes-iframe-wrap">
+                                            <h3 className="themes-section-title">👁️ Design System Showcase</h3>
+                                            <div className="themes-iframe-wrap themes-iframe-wrap-large">
                                                 <IframePreview html={previewHtml} />
                                             </div>
                                         </div>
                                     )}
-                                    {loadingPreview && (
-                                        <div className="themes-section">
-                                            <h3 className="themes-section-title">👁️ Preview Visual</h3>
-                                            <div className="themes-preview-loading" style={{ minHeight: '200px' }}>
-                                                <div className="themes-loading-dots"><span /><span /><span /></div>
-                                                <p>Gerando preview visual...</p>
+
+                                    {/* Raw JSON (collapsible) */}
+                                    {getCSS(result) && (
+                                        <details className="themes-details">
+                                            <summary className="themes-details-summary">💻 CSS Variables</summary>
+                                            <div className="themes-code-block">
+                                                <div className="themes-code-header">
+                                                    <span>:root {'{}'}</span>
+                                                    <button onClick={() => copyCSS(getCSS(result))}>
+                                                        {copiedCSS ? '✓ Copiado' : 'Copiar'}
+                                                    </button>
+                                                </div>
+                                                <pre className="themes-code-pre"><code>{getCSS(result)}</code></pre>
                                             </div>
-                                        </div>
+                                        </details>
                                     )}
+
+                                    <details className="themes-details">
+                                        <summary className="themes-details-summary">🧬 JSON Completo (Atomic Design)</summary>
+                                        <div className="themes-code-block">
+                                            <pre className="themes-code-pre"><code>{JSON.stringify(result, null, 2)}</code></pre>
+                                        </div>
+                                    </details>
                                 </div>
                             )}
                         </div>
@@ -433,41 +449,114 @@ export default function Themes() {
 
             {tab === 'gallery' && (
                 <div className="themes-gallery">
-                    {savedThemes.length === 0 ? (
-                        <div className="themes-gallery-empty">
-                            <span>📭</span>
-                            <h3>Nenhum tema salvo</h3>
-                            <p>Crie seu primeiro tema na aba "Criar Tema".</p>
-                        </div>
-                    ) : (
-                        <div className="themes-gallery-grid">
-                            {savedThemes.map(theme => (
-                                <div key={theme.id} className="themes-gallery-card" onClick={() => openThemeDetail(theme)}>
-                                    <div className="themes-gallery-card-palette">
-                                        {(theme.accentColors || []).slice(0, 5).map((c, i) => (
-                                            <div key={i} className="themes-gallery-color" style={{ background: c }} />
-                                        ))}
+                    {galleryView ? (
+                        <div className="themes-gallery-detail">
+                            <button className="themes-back-btn" onClick={() => setGalleryView(null)}>
+                                ← Voltar à galeria
+                            </button>
+                            <div className="themes-result">
+                                <div className="themes-result-header">
+                                    <div>
+                                        <h2>{galleryView.name}</h2>
+                                        <p className="themes-result-desc">{galleryView.description}</p>
+                                        {getTokenMeta(galleryView.tokens)?.personality && (
+                                            <div className="themes-tags">
+                                                {(getTokenMeta(galleryView.tokens).personality || []).map((t, i) =>
+                                                    <span key={i} className="themes-tag">{t}</span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="themes-gallery-card-info">
-                                        <h4>{theme.name}</h4>
-                                        <p>{theme.description || 'Design System personalizado'}</p>
-                                        <span className="themes-gallery-date">
-                                            {new Date(theme.createdAt).toLocaleDateString('pt-BR')}
-                                        </span>
-                                    </div>
-                                    <div className="themes-gallery-card-actions">
-                                        <button className="themes-btn-icon" title="Copiar CSS" onClick={(e) => {
-                                            e.stopPropagation();
-                                            copyCSS(theme.tokens?.cssVariables || '');
-                                        }}>📋</button>
-                                        <button className="themes-btn-icon themes-btn-danger" title="Deletar" onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDelete(theme.id);
-                                        }}>🗑️</button>
+                                    <div className="themes-result-actions">
+                                        <button className="themes-btn-secondary" onClick={() => copyCSS(getCSS(galleryView.tokens))}>
+                                            {copiedCSS ? '✓ Copiado!' : '📋 CSS'}
+                                        </button>
+                                        <button className="themes-btn-danger" onClick={() => { handleDelete(galleryView.id); setGalleryView(null); }}>
+                                            🗑️ Deletar
+                                        </button>
                                     </div>
                                 </div>
-                            ))}
+                                {/* Color dots */}
+                                <div className="themes-atoms-grid">
+                                    <div className="themes-atom-section">
+                                        <h4 className="themes-atom-title">🎨 Colors</h4>
+                                        <div className="themes-colors-row">
+                                            {Object.entries(getTokenColors(galleryView.tokens)).map(([key, hex]) => {
+                                                if (typeof hex !== 'string' || hex.startsWith('linear')) return null;
+                                                return (
+                                                    <div key={key} className="themes-color-dot" title={`${key}: ${hex}`}
+                                                        onClick={() => navigator.clipboard.writeText(hex)}
+                                                        style={{ background: hex }}
+                                                    />
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* Preview */}
+                                {galleryView.previewHtml && (
+                                    <div className="themes-section">
+                                        <h3 className="themes-section-title">👁️ Design System Showcase</h3>
+                                        <div className="themes-iframe-wrap themes-iframe-wrap-large">
+                                            <IframePreview html={galleryView.previewHtml} />
+                                        </div>
+                                    </div>
+                                )}
+                                {getCSS(galleryView.tokens) && (
+                                    <details className="themes-details">
+                                        <summary className="themes-details-summary">💻 CSS Variables</summary>
+                                        <div className="themes-code-block">
+                                            <pre className="themes-code-pre"><code>{getCSS(galleryView.tokens)}</code></pre>
+                                        </div>
+                                    </details>
+                                )}
+                                <details className="themes-details">
+                                    <summary className="themes-details-summary">🧬 JSON Completo</summary>
+                                    <div className="themes-code-block">
+                                        <pre className="themes-code-pre"><code>{JSON.stringify(galleryView.tokens, null, 2)}</code></pre>
+                                    </div>
+                                </details>
+                            </div>
                         </div>
+                    ) : (
+                        <>
+                            {savedThemes.length === 0 ? (
+                                <div className="themes-gallery-empty">
+                                    <span>📭</span>
+                                    <h3>Nenhum tema salvo</h3>
+                                    <p>Crie seu primeiro Design System na aba "Extrair DS".</p>
+                                </div>
+                            ) : (
+                                <div className="themes-gallery-grid">
+                                    {savedThemes.map(theme => (
+                                        <div key={theme.id} className="themes-gallery-card" onClick={() => openThemeDetail(theme)}>
+                                            <div className="themes-gallery-card-palette">
+                                                {(theme.accentColors || []).slice(0, 5).map((c, i) => (
+                                                    <div key={i} className="themes-gallery-color" style={{ background: c }} />
+                                                ))}
+                                            </div>
+                                            <div className="themes-gallery-card-info">
+                                                <h4>{theme.name}</h4>
+                                                <p>{theme.description || 'Design System personalizado'}</p>
+                                                <span className="themes-gallery-date">
+                                                    {new Date(theme.createdAt).toLocaleDateString('pt-BR')}
+                                                </span>
+                                            </div>
+                                            <div className="themes-gallery-card-actions">
+                                                <button className="themes-btn-icon" title="Copiar CSS" onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    copyCSS(getCSS(theme.tokens));
+                                                }}>📋</button>
+                                                <button className="themes-btn-icon themes-btn-danger" title="Deletar" onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDelete(theme.id);
+                                                }}>🗑️</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             )}

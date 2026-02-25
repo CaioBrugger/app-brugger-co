@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 
+const Gallery = lazy(() => import('./pages/Gallery'));
 const DesignGenerator = lazy(() => import('./pages/DesignGenerator'));
 const Products = lazy(() => import('./pages/Products'));
 const Themes = lazy(() => import('./pages/Themes'));
@@ -30,6 +31,7 @@ export default function App() {
                         {/* Main App Routes */}
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/builder" element={<LandingPageBuilder />} />
+                        <Route path="/gallery" element={<Gallery />} />
                         <Route path="/design" element={<DesignGenerator />} />
                         <Route path="/products" element={<Products />} />
                         <Route path="/themes" element={<Themes />} />

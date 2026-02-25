@@ -51,32 +51,60 @@ export async function fetchSiteStyles(url) {
         const fontLinks = Array.from(doc.querySelectorAll('link[href*="fonts.googleapis.com"]'))
             .map(l => l.getAttribute('href'))
             .filter(Boolean);
-        const fontImports = (inlineStyles + externalCSS.join('\n'))
+        const allCSSText = inlineStyles + '\n' + externalCSS.join('\n');
+        const fontImports = allCSSText
             .match(/@import\s+url\([^)]+fonts\.googleapis[^)]+\)/g) || [];
+
+        // Extract CSS custom properties (:root variables)
+        const cssVarMatches = allCSSText.match(/--[\w-]+\s*:\s*[^;]+/g) || [];
+        const cssVars = [...new Set(cssVarMatches)].slice(0, 100);
 
         // Extract meta info
         const title = doc.querySelector('title')?.textContent || '';
         const metaDesc = doc.querySelector('meta[name="description"]')?.getAttribute('content') || '';
+        const themeColor = doc.querySelector('meta[name="theme-color"]')?.getAttribute('content') || '';
+        const ogImage = doc.querySelector('meta[property="og:image"]')?.getAttribute('content') || '';
 
         // Extract key HTML structure (headings, buttons, etc.)
         const headings = Array.from(doc.querySelectorAll('h1, h2, h3'))
             .slice(0, 10)
             .map(h => `<${h.tagName}>: "${h.textContent.trim().slice(0, 80)}"`);
 
+        // Extract computed-style-like data from inline styles on key elements
+        const computedLines = [];
+        const selectors = ['h1', 'h2', 'h3', 'p', 'a', 'button', 'input', 'nav', 'header', 'footer', 'section'];
+        for (const sel of selectors) {
+            const el = doc.querySelector(sel);
+            if (el) {
+                const style = el.getAttribute('style');
+                const classes = el.getAttribute('class');
+                if (style || classes) {
+                    computedLines.push(`<${sel}> class="${classes || ''}" style="${style || ''}"`);
+                }
+            }
+        }
+        const computedStyles = computedLines.length > 0
+            ? computedLines.join('\n')
+            : null;
+
         const allCSS = [inlineStyles, ...externalCSS].join('\n\n');
 
-        // Truncate CSS if massive (keep first 30k chars — enough for token extraction)
-        const trimmedCSS = allCSS.length > 30000 ? allCSS.slice(0, 30000) + '\n/* ... truncated ... */' : allCSS;
+        // Truncate CSS if massive (keep first 40k chars — more context for atomic extraction)
+        const trimmedCSS = allCSS.length > 40000 ? allCSS.slice(0, 40000) + '\n/* ... truncated ... */' : allCSS;
 
         return {
             success: true,
             title,
             metaDesc,
+            themeColor,
+            ogImage,
             headings,
             fontLinks,
             fontImports,
+            cssVars,
+            computedStyles,
             css: trimmedCSS,
-            htmlSnippet: html.slice(0, 5000)
+            htmlSnippet: html.slice(0, 8000)
         };
     } catch (err) {
         console.warn('Failed to fetch site styles:', err);

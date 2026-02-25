@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { fetchThemes } from '../services/themesService';
 import { LLM_MODELS } from '../services/claude';
-import { generateFullLandingPage, regenerateLandingPageSection, saveLandingPage, exportLandingPageAsZip, exportLandingPageAsHtml } from '../services/landingPageBuilderService';
+import { generateFullLandingPage, regenerateLandingPageSection, exportLandingPageAsZip, exportLandingPageAsHtml } from '../services/landingPageBuilderService';
+import { saveLandingPage } from '../services/landingPagesService';
 import PreviewFrame from '../components/LandingPage/PreviewFrame';
 import BuilderCommandPalette from '../components/LandingPage/BuilderCommandPalette';
 import BuilderProgress from '../components/LandingPage/BuilderProgress';
 import SectionVariationPicker from '../components/LandingPage/SectionVariationPicker';
 
 export default function LandingPageBuilder() {
+    const navigate = useNavigate();
     const [productDescription, setProductDescription] = useState('');
     const [themes, setThemes] = useState([]);
     const [selectedThemeId, setSelectedThemeId] = useState('');
@@ -26,12 +29,30 @@ export default function LandingPageBuilder() {
     const [showVariationPicker, setShowVariationPicker] = useState(false);
     const [saveMenuOpen, setSaveMenuOpen] = useState(false);
 
+    // Save state
+    const [saveModalOpen, setSaveModalOpen] = useState(false);
+    const [saveName, setSaveName] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveToast, setSaveToast] = useState(null); // { message, id }
+
     const dropdownRef = useRef(null);
     const llmDropdownRef = useRef(null);
     const saveMenuRef = useRef(null);
+    const saveNameRef = useRef(null);
 
     useEffect(() => {
         loadThemes();
+        // Load LP from Gallery if requested
+        const raw = sessionStorage.getItem('lp_load');
+        if (raw) {
+            try {
+                const { name, description, themeId, sections: loadedSections } = JSON.parse(raw);
+                if (description) setProductDescription(description);
+                if (themeId)     setSelectedThemeId(themeId);
+                if (loadedSections?.length) setSections(loadedSections);
+            } catch (_) {}
+            sessionStorage.removeItem('lp_load');
+        }
         const handleClickOutside = (e) => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setThemeDropdownOpen(false);
             if (llmDropdownRef.current && !llmDropdownRef.current.contains(e.target)) setLlmDropdownOpen(false);
@@ -103,13 +124,32 @@ export default function LandingPageBuilder() {
         setSelectedSectionId(null);
     };
 
-    const handleSaveToSupabase = async () => {
+    const openSaveModal = () => {
         if (sections.length === 0) return alert("Gere a página primeiro.");
+        setSaveName(productDescription.substring(0, 70) || 'Minha Landing Page');
+        setSaveModalOpen(true);
+        setTimeout(() => saveNameRef.current?.focus(), 80);
+    };
+
+    const handleConfirmSave = async () => {
+        if (!saveName.trim()) return;
+        setIsSaving(true);
         try {
-            await saveLandingPage(productDescription, selectedThemeId, sections);
-            alert("✅ Landing Page salva com sucesso no Supabase!");
-        } catch (err) { alert("Erro ao salvar: " + err.message); }
-        setSaveMenuOpen(false);
+            const saved = await saveLandingPage({
+                name:        saveName.trim(),
+                description: productDescription,
+                themeId:     selectedThemeId,
+                modelUsed:   selectedModel,
+                sections,
+            });
+            setSaveModalOpen(false);
+            setSaveToast({ message: '✅ LP salva na Galeria!', id: saved.id });
+            setTimeout(() => setSaveToast(null), 5000);
+        } catch (err) {
+            alert("Erro ao salvar: " + err.message);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleDownloadZip = async () => {
@@ -132,7 +172,8 @@ export default function LandingPageBuilder() {
     return (
         <div className="page-container" style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100vh', padding: 0, backgroundColor: 'var(--bg)', color: 'var(--text)', overflow: 'hidden' }}>
 
-            <BuilderProgress state={generationState} />
+            {/* BuilderProgress apenas para geração completa, não para variações */}
+            <BuilderProgress state={generationState.step === 'refine' ? { isGenerating: false } : generationState} />
 
             {showVariationPicker && sectionVariations.length > 0 && (
                 <SectionVariationPicker
@@ -241,7 +282,23 @@ export default function LandingPageBuilder() {
                     onClick={handleGenerate}
                 >Construir LP</button>
 
-                {/* Save/Export Menu */}
+                {/* Save Button */}
+                {sections.length > 0 && (
+                    <button
+                        onClick={openSaveModal}
+                        style={{
+                            background: 'rgba(201,169,98,0.1)', color: 'var(--accent)',
+                            border: '1px solid rgba(201,169,98,0.3)',
+                            padding: '0.5rem 0.9rem', fontFamily: 'var(--font-body)', fontSize: '12px', fontWeight: '600',
+                            borderRadius: 'var(--radius-md)', cursor: 'pointer', flexShrink: 0,
+                            transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '5px'
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(201,169,98,0.18)'; e.currentTarget.style.borderColor = 'rgba(201,169,98,0.5)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(201,169,98,0.1)'; e.currentTarget.style.borderColor = 'rgba(201,169,98,0.3)'; }}
+                    >☁ Salvar LP</button>
+                )}
+
+                {/* Download Menu */}
                 <div ref={saveMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
                     <button onClick={() => setSaveMenuOpen(!saveMenuOpen)} style={{
                         background: 'transparent', color: 'var(--text)', border: '1px solid var(--border)',
@@ -252,7 +309,7 @@ export default function LandingPageBuilder() {
                         onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text)'; }}
                     >
-                        💾 Exportar
+                        ↓ Exportar
                     </button>
                     {saveMenuOpen && (
                         <div style={{
@@ -260,11 +317,7 @@ export default function LandingPageBuilder() {
                             background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
                             boxShadow: '0 10px 30px rgba(0,0,0,0.5)', zIndex: 100, overflow: 'hidden'
                         }}>
-                            <div onClick={handleSaveToSupabase} style={{ padding: '0.7rem 1rem', cursor: 'pointer', fontSize: '12px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.2s' }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                            >☁️ Salvar no Supabase</div>
-                            <div onClick={handleDownloadZip} style={{ padding: '0.7rem 1rem', cursor: 'pointer', fontSize: '12px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid var(--border)', transition: 'background 0.2s' }}
+                            <div onClick={handleDownloadZip} style={{ padding: '0.7rem 1rem', cursor: 'pointer', fontSize: '12px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background 0.2s' }}
                                 onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                             >📦 Download ZIP (HTML+CSS+JS)</div>
@@ -303,7 +356,12 @@ export default function LandingPageBuilder() {
                     <PreviewFrame
                         html={sections.length > 0 ? fullHtml : ''}
                         viewMode={viewMode}
-                        onSelectSection={(id) => { setSelectedSectionId(id); setSectionVariations([]); setShowVariationPicker(false); }}
+                        onSelectSection={(id) => {
+                            setSelectedSectionId(id);
+                            setSectionVariations([]);
+                            setShowVariationPicker(false);
+                            handleRegenerateSection(id, '');
+                        }}
                     />
                 </div>
 
@@ -314,10 +372,52 @@ export default function LandingPageBuilder() {
                     onRegenerate={handleRegenerateSection}
                     isGenerating={generationState.isGenerating}
                     onClose={() => { setSelectedSectionId(null); setSectionVariations([]); setShowVariationPicker(false); }}
-                    variations={[]}
+                    variations={sectionVariations}
                     onPickVariation={handlePickVariation}
                 />
             </div>
+
+            {/* ── Save Modal ── */}
+            {saveModalOpen && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)', zIndex: 99998, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: '#131316', border: '1px solid rgba(201,169,98,0.2)', borderRadius: '10px', padding: '2rem', width: '440px', fontFamily: 'var(--font-body)', boxShadow: '0 32px 64px rgba(0,0,0,0.7)' }}>
+                        <h3 style={{ margin: '0 0 0.375rem', color: '#F5F0E8', fontSize: '16px', fontFamily: 'var(--font-heading)', fontWeight: 400 }}>Salvar Landing Page</h3>
+                        <p style={{ margin: '0 0 1.25rem', color: 'rgba(245,240,232,0.45)', fontSize: '12px' }}>Ela ficará disponível na Galeria de LPs.</p>
+                        <label style={{ display: 'block', color: 'rgba(245,240,232,0.6)', fontSize: '11px', fontWeight: 600, marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Nome da LP</label>
+                        <input
+                            ref={saveNameRef}
+                            style={{ width: '100%', background: 'var(--bg)', border: '1px solid rgba(201,169,98,0.25)', color: '#F5F0E8', padding: '10px 12px', borderRadius: '6px', fontFamily: 'var(--font-body)', fontSize: '13px', outline: 'none', boxSizing: 'border-box', marginBottom: '1.25rem', transition: 'border-color 0.2s' }}
+                            value={saveName}
+                            onChange={e => setSaveName(e.target.value)}
+                            onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                            onBlur={e => e.target.style.borderColor = 'rgba(201,169,98,0.25)'}
+                            onKeyDown={e => { if (e.key === 'Enter') handleConfirmSave(); if (e.key === 'Escape') setSaveModalOpen(false); }}
+                            placeholder="Ex: LP Anjos e Arcanjos na Bíblia"
+                            maxLength={120}
+                        />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button onClick={() => setSaveModalOpen(false)} style={{ flex: 1, background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(245,240,232,0.5)', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, fontFamily: 'var(--font-body)', transition: 'all 0.2s' }}>
+                                Cancelar
+                            </button>
+                            <button onClick={handleConfirmSave} disabled={isSaving || !saveName.trim()} style={{ flex: 2, background: isSaving || !saveName.trim() ? 'rgba(201,169,98,0.3)' : 'var(--accent)', color: '#0C0C0E', border: 'none', padding: '10px', borderRadius: '6px', cursor: isSaving || !saveName.trim() ? 'default' : 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-body)', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                {isSaving ? 'Salvando…' : '☁ Salvar na Galeria'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Save Toast ── */}
+            {saveToast && (
+                <div style={{ position: 'fixed', bottom: '28px', right: '28px', background: '#131316', border: '1px solid rgba(201,169,98,0.3)', borderRadius: '10px', padding: '14px 18px', zIndex: 99999, fontFamily: 'var(--font-body)', boxShadow: '0 12px 32px rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', gap: '12px', animation: 'toastIn .3s cubic-bezier(.4,0,.2,1)' }}>
+                    <style>{`@keyframes toastIn { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }`}</style>
+                    <span style={{ color: '#F5F0E8', fontSize: '13px', fontWeight: 500 }}>{saveToast.message}</span>
+                    <button onClick={() => navigate('/gallery')} style={{ background: 'rgba(201,169,98,0.12)', border: '1px solid rgba(201,169,98,0.25)', color: 'var(--accent)', padding: '5px 12px', borderRadius: '5px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'var(--font-body)', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
+                        Ver Galeria →
+                    </button>
+                    <button onClick={() => setSaveToast(null)} style={{ background: 'transparent', border: 'none', color: 'rgba(245,240,232,0.35)', cursor: 'pointer', fontSize: '14px', padding: '2px', lineHeight: 1 }}>✕</button>
+                </div>
+            )}
         </div>
     );
 }

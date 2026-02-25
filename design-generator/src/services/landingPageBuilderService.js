@@ -1,6 +1,6 @@
 import { generateLandingPageCopy } from './claude';
 import { callGemini, generateImage } from '../api';
-import { buildModularLandingPagePrompt, buildImagePrompt } from '../prompt';
+import { buildModularLandingPagePrompt, buildContextualImagePrompt } from '../prompt';
 import { researchTopic } from './perplexity';
 import { supabase } from '../lib/supabase';
 import JSZip from 'jszip';
@@ -119,7 +119,7 @@ export const generateFullLandingPage = async (productDescription, themeTokens, o
             if (needsImage) {
                 const promise = (async () => {
                     try {
-                        const imgPrompt = buildImagePrompt(section.name, productDescription, productDescription);
+                        const imgPrompt = buildContextualImagePrompt(section.name, productDescription, productDescription, section.id, section.content);
                         const imgData = await generateImage(imgPrompt);
 
                         if (imgData?.images?.length > 0) {
@@ -255,18 +255,18 @@ ${JSON.stringify(themeTokens, null, 2)}
 FRONTEND SPECIALIST RULES:
 ${condensedRules}
 
-O usuário quer:
-"${userInstructions}"
-
-REGRAS OBRIGATÓRIAS PARA AS 3 VARIAÇÕES:
-1. Cada variação DEVE ter layout COMPLETAMENTE DIFERENTE (não apenas cores)
-2. Variação 1: Layout clássico/elegante com composição simétrica
-3. Variação 2: Layout bold/moderno com assimetria e elementos grandes
-4. Variação 3: Layout minimalista/sofisticado com espaço negativo generoso
-5. TODAS devem: usar o design system, ser responsivas, ter animações suaves, seguir "Dark Luxury Biblical"
+${userInstructions?.trim() ? `INSTRUÇÃO DO USUÁRIO: "${userInstructions}"\n` : ''}REGRAS OBRIGATÓRIAS PARA AS 3 VARIAÇÕES:
+1. Cada variação DEVE ter layout COMPLETAMENTE DIFERENTE — topologia, hierarquia visual e composição distintas
+2. Variação 1 ("Elegante"): composição simétrica, tipografia serif dominante, espaçamento generoso
+3. Variação 2 ("Bold"): assimetria extrema (90/10), elementos hero oversized, alto contraste
+4. Variação 3 ("Minimal"): espaço negativo generoso, grid fragmentado, foco em um único elemento âncora
+5. TODAS devem: usar os tokens do design system, ser responsivas, ter animações suaves CSS
 6. Incluir classes de animação: lp-animate, lp-fade-left, lp-fade-right, lp-card-glow, lp-cta-shimmer
-7. NUNCA use roxo/violeta (Purple Ban)
-8. Hover effects em TODOS os botões e cards
+7. NUNCA use roxo/violeta/indigo (Purple Ban absoluto)
+8. Hover effects em TODOS os botões e cards com transform + transition
+9. PROIBIDO: Bento Grid como default, glassmorphism, mesh gradient, layout split 50/50
+10. Cada variação deve ser MEMORÁVEL — se parece template genérico, refaça
+11. CRÍTICO: CADA VARIAÇÃO DEVE INCLUIR SEU PRÓPRIO CSS PURO DENTRO DE UMA TAG <style>. NÃO USE TAILWIND OU CLASSES UTILITY! O HTML DEVE SER RENDERIZADO PERFEITAMENTE DE FORMA INDEPENDENTE.
 
 Retorne APENAS JSON (sem \`\`\`json):
 {

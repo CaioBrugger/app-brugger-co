@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f0f14"/>
+      <stop offset="100%" stop-color="#1a1a2e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7c6af7"/>
+      <stop offset="100%" stop-color="#4f9cf8"/>
+    </linearGradient>
+    <clipPath id="round">
+      <rect width="32" height="32" rx="7" ry="7"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="32" height="32" rx="7" ry="7" fill="url(#bg)"/>
+
+  <!-- Accent glow top-left -->
+  <circle cx="4" cy="4" r="10" fill="url(#accent)" opacity="0.15" clip-path="url(#round)"/>
+
+  <!-- Letter B -->
+  <text
+    x="5"
+    y="24"
+    font-family="Georgia, 'DM Serif Display', serif"
+    font-size="22"
+    font-weight="700"
+    letter-spacing="-1"
+    fill="url(#accent)"
+  >B</text>
+
+  <!-- Dot accent — "CO" hint -->
+  <circle cx="25" cy="22" r="2.2" fill="url(#accent)" opacity="0.9"/>
+</svg>
