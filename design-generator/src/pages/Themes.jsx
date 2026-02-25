@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { callGeminiWithImages, callGemini } from '../api';
-import { buildExtractThemePrompt, buildThemePreviewPrompt } from '../prompt';
+import { callClaudeWithImages } from '../services/claude';
+import { buildExtractThemePrompt, buildThemePreviewPrompt, buildVisualAnalysisPrompt } from '../prompt';
 import { fetchThemes, saveTheme, deleteTheme } from '../services/themesService';
 import { fetchSiteStyles } from '../services/urlFetcher';
+import { captureScreenshots } from '../services/screenshotService';
 
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -17,7 +19,9 @@ function fileToBase64(file) {
 }
 
 const STEPS = [
-    { id: 'analyze', label: 'Analisando referências', icon: '🔍' },
+    { id: 'fetch', label: 'Buscando CSS e HTML', icon: '🔍' },
+    { id: 'screenshot', label: 'Capturando screenshots', icon: '📸' },
+    { id: 'vision', label: 'Claude analisando visualmente', icon: '🧠' },
     { id: 'extract', label: 'Extraindo Design System', icon: '⚛️' },
     { id: 'preview', label: 'Gerando preview', icon: '🎨' },
     { id: 'done', label: 'Concluído', icon: '✅' }
@@ -33,6 +37,8 @@ export default function Themes() {
     const [currentStep, setCurrentStep] = useState(-1);
     const [result, setResult] = useState(null);
     const [previewHtml, setPreviewHtml] = useState('');
+    const [screenshots, setScreenshots] = useState([]);
+    const [visualAnalysis, setVisualAnalysis] = useState(null);
     const [savedThemes, setSavedThemes] = useState([]);
     const [copiedCSS, setCopiedCSS] = useState(false);
     const [error, setError] = useState('');
@@ -89,35 +95,80 @@ export default function Themes() {
         setError('');
         setResult(null);
         setPreviewHtml('');
+        setScreenshots([]);
+        setVisualAnalysis(null);
         setCurrentStep(0);
 
         try {
-            // Step 1: Fetch real CSS from URL if provided
+            // ── Step 1: Fetch CSS + HTML via proxy ──
             let siteData = null;
-            if (urls.trim()) {
-                const firstUrl = urls.trim().split(',')[0].trim();
+            const firstUrl = urls.trim() ? urls.trim().split(',')[0].trim() : null;
+            if (firstUrl) {
                 siteData = await fetchSiteStyles(firstUrl);
             }
 
             setCurrentStep(1);
 
-            // Step 2: Convert uploaded images to base64
-            const base64Images = await Promise.all(images.map(fileToBase64));
+            // ── Step 2: Capture screenshots (desktop + mobile) ──
+            let capturedScreenshots = [];
+            if (firstUrl) {
+                try {
+                    const result = await captureScreenshots(firstUrl);
+                    capturedScreenshots = result.screenshots || [];
+                    setScreenshots(capturedScreenshots);
+                } catch (ssErr) {
+                    console.warn('Screenshot capture failed:', ssErr.message);
+                }
+            }
 
-            // Step 3: Build prompt with real CSS data
-            const prompt = buildExtractThemePrompt(name.trim(), specs.trim(), urls.trim(), siteData);
+            setCurrentStep(2);
+
+            // ── Step 3: Claude Sonnet visual analysis ──
+            let visionResult = null;
+            const allImages = [
+                ...capturedScreenshots.filter(Boolean).map(s => ({ mimeType: s.mimeType, data: s.data })),
+                ...(await Promise.all(images.map(fileToBase64)))
+            ];
+
+            if (allImages.length > 0) {
+                try {
+                    const visionPrompt = buildVisualAnalysisPrompt(name.trim());
+                    const visionRaw = await callClaudeWithImages(
+                        visionPrompt,
+                        `Analyze these ${allImages.length} screenshot(s) of the website "${name.trim()}" and extract the complete design system. Return ONLY valid JSON.`,
+                        allImages
+                    );
+                    // Parse Claude's response
+                    try {
+                        visionResult = typeof visionRaw === 'string'
+                            ? JSON.parse(visionRaw.replace(/```json?\s*/g, '').replace(/```/g, '').trim())
+                            : visionRaw;
+                    } catch {
+                        const jsonMatch = visionRaw?.match(/\{[\s\S]*\}/);
+                        visionResult = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+                    }
+                    setVisualAnalysis(visionResult);
+                } catch (vErr) {
+                    console.warn('Claude visual analysis failed:', vErr.message);
+                }
+            }
+
+            setCurrentStep(3);
+
+            // ── Step 4: Gemini — merge CSS + visual analysis → final tokens ──
+            const prompt = buildExtractThemePrompt(name.trim(), specs.trim(), urls.trim(), siteData, visionResult);
 
             let tokens;
-            if (base64Images.length > 0) {
-                tokens = await callGeminiWithImages(prompt, base64Images);
+            if (allImages.length > 0) {
+                tokens = await callGeminiWithImages(prompt, allImages);
             } else {
                 tokens = await callGemini(prompt);
             }
 
             setResult(tokens);
-            setCurrentStep(2);
+            setCurrentStep(4);
 
-            // Step 4: Generate preview
+            // ── Step 5: Generate preview ──
             try {
                 const previewPrompt = buildThemePreviewPrompt(tokens);
                 const preview = await callGemini(previewPrompt);
@@ -126,7 +177,7 @@ export default function Themes() {
                 console.warn('Preview generation failed:', previewErr);
             }
 
-            setCurrentStep(3);
+            setCurrentStep(5);
         } catch (err) {
             setError(err.message || 'Erro ao gerar tema');
             setCurrentStep(-1);
@@ -141,10 +192,18 @@ export default function Themes() {
         const colors = atoms.colors || result.colors || {};
         const meta = result.meta || {};
 
+        // Embed screenshots and visual analysis in tokens for persistence
+        const tokensToSave = {
+            ...result,
+            _screenshots: screenshots.map(s => s.dataUrl).filter(Boolean),
+            _visualAnalysis: visualAnalysis,
+            _designSummary: visualAnalysis?.summary || ''
+        };
+
         const theme = await saveTheme({
             name: meta.name || result.name || name,
             description: meta.description || result.description || '',
-            tokens: result,
+            tokens: tokensToSave,
             previewHtml,
             accentColors: [
                 colors.accent,
@@ -372,6 +431,36 @@ export default function Themes() {
                                         </div>
                                     </div>
 
+                                    {/* Screenshots + Visual Analysis */}
+                                    {(screenshots.length > 0 || visualAnalysis) && (
+                                        <div className="themes-analysis-section">
+                                            {screenshots.length > 0 && (
+                                                <div className="themes-screenshots">
+                                                    <h4 className="themes-atom-title">📸 Screenshots Capturados</h4>
+                                                    <div className="themes-screenshots-grid">
+                                                        {screenshots.map((ss, idx) => (
+                                                            <div key={idx} className="themes-screenshot-thumb" onClick={() => window.open(ss.dataUrl, '_blank')}>
+                                                                <img src={ss.dataUrl} alt={ss.label} />
+                                                                <span className="themes-screenshot-label">{ss.label} ({ss.width}×{ss.height})</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {visualAnalysis?.summary && (
+                                                <div className="themes-design-brief">
+                                                    <h4 className="themes-atom-title">🧠 Design Brief (Claude Sonnet)</h4>
+                                                    <p>{visualAnalysis.summary}</p>
+                                                    {visualAnalysis.personality && (
+                                                        <div className="themes-tags" style={{ marginTop: '0.5rem' }}>
+                                                            {visualAnalysis.personality.map((k, i) => <span key={i} className="themes-tag">{k}</span>)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {/* Quick Atoms Preview */}
                                     <div className="themes-atoms-grid">
                                         {/* Colors Swatch */}
@@ -493,6 +582,29 @@ export default function Themes() {
                                         </div>
                                     </div>
                                 </div>
+                                {/* Saved Screenshots + Design Brief */}
+                                {(galleryView.tokens?._screenshots?.length > 0 || galleryView.tokens?._designSummary) && (
+                                    <div className="themes-analysis-section">
+                                        {galleryView.tokens._screenshots?.length > 0 && (
+                                            <div className="themes-screenshots">
+                                                <h4 className="themes-atom-title">📸 Screenshots</h4>
+                                                <div className="themes-screenshots-grid">
+                                                    {galleryView.tokens._screenshots.map((dataUrl, idx) => (
+                                                        <div key={idx} className="themes-screenshot-thumb" onClick={() => window.open(dataUrl, '_blank')}>
+                                                            <img src={dataUrl} alt={`Screenshot ${idx + 1}`} />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {galleryView.tokens._designSummary && (
+                                            <div className="themes-design-brief">
+                                                <h4 className="themes-atom-title">🧠 Design Brief</h4>
+                                                <p>{galleryView.tokens._designSummary}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 {/* Preview */}
                                 {galleryView.previewHtml && (
                                     <div className="themes-section">

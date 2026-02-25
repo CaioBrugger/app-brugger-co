@@ -39,6 +39,57 @@ export async function callClaude(systemPrompt, userPrompt, model = DEFAULT_MODEL
     return text;
 }
 
+/**
+ * Calls Claude (via OpenRouter) with text + images (multi-modal).
+ * @param {string} systemPrompt - System instructions
+ * @param {string} userPrompt - User text prompt
+ * @param {{ mimeType: string, data: string }[]} images - Array of base64 images
+ * @param {string} model - Model ID
+ */
+export async function callClaudeWithImages(systemPrompt, userPrompt, images = [], model = DEFAULT_MODEL) {
+    const userContent = [
+        { type: 'text', text: userPrompt }
+    ];
+
+    for (const img of images) {
+        userContent.push({
+            type: 'image_url',
+            image_url: {
+                url: `data:${img.mimeType};base64,${img.data}`
+            }
+        });
+    }
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+            'HTTP-Referer': 'http://localhost:3000',
+            'X-Title': 'Brugger CO Toolbox'
+        },
+        body: JSON.stringify({
+            model,
+            max_tokens: 16384,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userContent }
+            ]
+        })
+    });
+
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        console.error(`[OpenRouter Vision ${model}] API Error:`, err);
+        throw new Error(err.error?.message || `Erro na API OpenRouter Vision: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error(`Resposta vazia de ${model} (vision) via OpenRouter`);
+    return text;
+}
+
 export async function generateAgent(description) {
     const systemPrompt = `You are an expert AI Agent designer. You create comprehensive, well-structured agent definition files in Markdown format with YAML frontmatter.
 

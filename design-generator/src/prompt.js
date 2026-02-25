@@ -236,7 +236,126 @@ function extractCoreSubject(description) {
   return cleaned.length > 5 ? cleaned.substring(0, 80) : description.substring(0, 80);
 }
 
-export function buildExtractThemePrompt(themeName, userSpecs, referenceUrls, siteData) {
+/**
+ * Prompt for Claude Sonnet 4 (multi-modal) to visually analyze screenshots
+ * and extract a detailed design system description.
+ */
+export function buildVisualAnalysisPrompt(themeName) {
+  return `You are an expert UX/UI Design System Analyst. You are analyzing REAL SCREENSHOTS of a website to extract its complete visual design system with SURGICAL PRECISION.
+
+YOUR TASK: Analyze the attached screenshots and extract EVERY visual detail into a structured design system document.
+
+SITE NAME: "${themeName}"
+
+## WHAT TO EXTRACT:
+
+### 1. COLOR PALETTE (EXACT hex codes from what you SEE)
+- **Primary background color** (main page background)
+- **Surface colors** (card backgrounds, modals, secondary areas)
+- **Text colors** (primary, secondary, muted)
+- **Accent/brand color** (CTAs, highlights, links)
+- **Accent variations** (lighter/darker shades used)
+- **Border colors** (subtle borders, dividers)
+- **Gradient definitions** (direction + color stops if any)
+- **Semantic colors** (success green, error red, warning yellow if visible)
+
+### 2. TYPOGRAPHY
+- **Heading font family** (identify the exact Google Font or system font)
+- **Body font family** (identify the exact font)
+- **Font sizes observed** (largest heading to smallest caption, in px)
+- **Font weights used** (light, regular, medium, semibold, bold)
+- **Letter spacing** (tight for headings? wide for labels?)
+- **Line heights** (tight for headings, relaxed for body)
+- **Text transforms** (uppercase labels, italic usage)
+
+### 3. COMPONENT STYLES
+- **Buttons**: shape (rounded, pill, square), colors, padding, shadows, hover effects
+- **Cards**: background, border, radius, shadow, padding, hover effects
+- **Input fields**: border style, radius, background, focus state
+- **Badges/tags**: style, colors, sizing
+- **Icons**: style (outline, filled, duotone), size, color
+- **Navigation**: style, background, transparency, blur
+
+### 4. SPACING & LAYOUT
+- **Section padding** (vertical spacing between major sections)
+- **Content max-width** (how wide is the content area)
+- **Grid system** (column count, gap sizes)
+- **Component spacing** (gaps between cards, items)
+
+### 5. VISUAL EFFECTS & ANIMATIONS
+- **Background textures** (grain, noise, patterns)
+- **Glassmorphism** (blur effects)
+- **Shadows** (depth, spread, color)
+- **Hover interactions** (scale, shadow changes, color transitions)
+- **Scroll animations** (fade in, slide up)
+
+### 6. OVERALL AESTHETIC PERSONALITY
+- 3-5 keywords that describe the visual personality
+- What makes this design unique/memorable
+- Color temperature (warm, cool, neutral)
+- Density (spacious, compact, mixed)
+
+RESPOND IN ENGLISH with a structured JSON:
+{
+  "colors": {
+    "background": "#hex",
+    "surface": "#hex",
+    "surface2": "#hex",
+    "border": "#hex",
+    "text": "#hex",
+    "textSecondary": "#hex",
+    "textMuted": "#hex",
+    "accent": "#hex",
+    "accentLight": "#hex",
+    "accentDark": "#hex",
+    "accentGradient": "linear-gradient(...) or null",
+    "success": "#hex or null",
+    "warning": "#hex or null",
+    "error": "#hex or null"
+  },
+  "typography": {
+    "fontHeading": "Font Name",
+    "fontBody": "Font Name",
+    "headingSizes": ["48px", "36px", "24px", "20px"],
+    "bodySizes": ["16px", "14px", "12px"],
+    "weights": ["300", "400", "500", "600", "700"],
+    "letterSpacingHeading": "-0.02em",
+    "letterSpacingBody": "0",
+    "uppercaseLabels": true
+  },
+  "components": {
+    "buttonRadius": "8px",
+    "buttonPadding": "12px 24px",
+    "cardRadius": "12px",
+    "cardShadow": "0 4px 12px rgba(0,0,0,0.1)",
+    "inputRadius": "8px",
+    "navBlur": "blur(12px) or none"
+  },
+  "spacing": {
+    "sectionPadding": "80px",
+    "contentMaxWidth": "1200px",
+    "cardGap": "24px"
+  },
+  "effects": {
+    "hasGrain": false,
+    "hasGlassmorphism": false,
+    "shadowStyle": "subtle or dramatic",
+    "hoverScale": "1.02",
+    "entranceAnimation": "fadeUp or none"
+  },
+  "personality": ["keyword1", "keyword2", "keyword3"],
+  "summary": "A 2-3 sentence description of the overall design aesthetic, what makes it unique, and the emotional tone it conveys."
+}
+
+CRITICAL RULES:
+- Extract REAL values from screenshots — do NOT guess or use generic defaults
+- Be PRECISE with hex colors — analyze each pixel region carefully
+- Identify fonts by visual appearance (serif vs sans-serif, geometric vs humanist)
+- If you see a Google Font, name it specifically (Inter, Poppins, DM Sans, etc.)
+- Return ONLY valid JSON, no markdown wrapping`;
+}
+
+export function buildExtractThemePrompt(themeName, userSpecs, referenceUrls, siteData, visualAnalysis) {
   let contextBlock = '';
 
   if (siteData?.success && siteData.css) {
@@ -284,6 +403,13 @@ NOME DO TEMA: "${themeName}"
 ${userSpecs ? `\nESPECIFICAÇÕES DO USUÁRIO: "${userSpecs}"` : ''}
 ${referenceUrls ? `\nURLS DE REFERÊNCIA: ${referenceUrls}` : ''}
 ${contextBlock}
+${visualAnalysis ? `
+## 🎯 ANÁLISE VISUAL (CLAUDE SONNET — ALTA PRIORIDADE):
+O seguinte foi extraído por um modelo de IA especialista que ANALISOU VISUALMENTE screenshots reais do site.
+Quando houver conflito entre valores do CSS e valores da análise visual, PREFIRA A ANÁLISE VISUAL — ela representa exatamente o que o usuário vê.
+
+${JSON.stringify(visualAnalysis, null, 2)}
+` : ''}
 
 ## INSTRUÇÕES DE PRECISÃO:
 
