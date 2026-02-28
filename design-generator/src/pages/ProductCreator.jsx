@@ -253,7 +253,10 @@ export default function ProductCreator() {
                     onExpandModule={setExpandedModule}
                     onBack={() => { setStep(2); setResult(null); setError(''); }}
                     onReset={handleReset}
-                    onCreateItem={setWorkflowItem}
+                    onCreateItem={(item) => {
+                        console.log('[ProductCreator] onCreateItem invoked! Setting workflowItem:', item);
+                        setWorkflowItem(item);
+                    }}
                 />
             )}
 
@@ -262,7 +265,10 @@ export default function ProductCreator() {
                 <WorkflowModal
                     item={workflowItem}
                     result={result}
-                    onClose={() => setWorkflowItem(null)}
+                    onClose={() => {
+                        console.log('[ProductCreator] WorkflowModal onClose');
+                        setWorkflowItem(null);
+                    }}
                 />
             )}
         </div>
@@ -770,6 +776,7 @@ function StepConfigure({ selectedLp, inputMode, hasOrderBump, onHasOrderBumpChan
 
 // ─── Step 3: Dashboard ─────────────────────────────────────────────────────────
 function StepDashboard({ analyzing, progress, result, error, activeTab, onTabChange, expandedModule, onExpandModule, onBack, onReset, onCreateItem }) {
+    console.log('[StepDashboard] Render. onCreateItem is type: ', typeof onCreateItem);
     if (error) {
         return (
             <div style={{ textAlign: 'center', padding: '5rem 2rem', animation: 'pc-fadein 0.3s ease' }}>
@@ -1266,16 +1273,19 @@ function PlanoTab({ result, onCreateItem }) {
                             tipo={produtoTipo}
                             meta={mod.paginasEstimadas ? `~${mod.paginasEstimadas}pg` : null}
                             topicos={mod.topicos}
-                            onCriar={() => onCreateItem?.({
-                                _type: 'module',
-                                numero: mod.numero ?? i + 1,
-                                nome: mod.nome,
-                                topicos: mod.topicos || [],
-                                paginas: mod.paginasEstimadas,
-                                tipo: produtoTipo,
-                                productNome: produto.nome,
-                                publicoAlvo: produto.publicoAlvo,
-                            })}
+                            onCriar={() => {
+                                console.log('[PlanoTab] Calling onCreateItem for module: ', mod.nome);
+                                onCreateItem?.({
+                                    _type: 'module',
+                                    numero: mod.numero ?? i + 1,
+                                    nome: mod.nome,
+                                    topicos: mod.topicos || [],
+                                    paginas: mod.paginasEstimadas,
+                                    tipo: produtoTipo,
+                                    productNome: produto.nome,
+                                    publicoAlvo: produto.publicoAlvo,
+                                });
+                            }}
                         />
                     ))}
                 </PlanoSection>
@@ -1437,7 +1447,10 @@ function DeliverableRow({ numero, nome, tipo, meta, badge, badgeColor, topicos, 
 
                     {/* ✦ Criar */}
                     <button
-                        onClick={canCreate ? onCriar : undefined}
+                        onClick={(e) => {
+                            console.log('[DeliverableRow] Clicked Criar: ', nome, canCreate);
+                            if (canCreate) onCriar(e);
+                        }}
                         disabled={!canCreate}
                         title={canCreate ? `Gerar DOCX + PDF de "${nome}"` : 'Tipo ainda não suportado — em breve'}
                         style={{
