@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fetchLandingPages, fetchLandingPage } from '../services/landingPagesService';
+import { fetchOrderBumpsByLp } from '../services/orderBumpsService';
 import { runEstruturador } from '../services/estruturadorService';
 import WorkflowModal from './WorkflowModal.jsx';
 
@@ -22,20 +23,20 @@ const C = {
 };
 
 const TIPO_CONFIG = {
-    ebook_simples:  { label: 'Ebook Texto',      icon: '📕', color: '#C9A962' },
-    ebook_imagens:  { label: 'Ebook + Imagens',  icon: '🖼️', color: '#A78BFA' },
-    ebook_slide:    { label: 'Ebook Slide',      icon: '📊', color: '#60A5FA' },
-    videoaula:      { label: 'Videoaula',        icon: '🎬', color: '#F59E0B' },
-    audio:          { label: 'Áudio',            icon: '🎧', color: '#4ADE80' },
-    checklist:      { label: 'Checklist',        icon: '📋', color: '#FB923C' },
+    ebook_simples: { label: 'Ebook Texto', icon: '📕', color: '#C9A962' },
+    ebook_imagens: { label: 'Ebook + Imagens', icon: '🖼️', color: '#A78BFA' },
+    ebook_slide: { label: 'Ebook Slide', icon: '📊', color: '#60A5FA' },
+    videoaula: { label: 'Videoaula', icon: '🎬', color: '#F59E0B' },
+    audio: { label: 'Áudio', icon: '🎧', color: '#4ADE80' },
+    checklist: { label: 'Checklist', icon: '📋', color: '#FB923C' },
 };
 
 const FASE_COLORS = {
     'Produto Principal': '#C9A962',
-    'Bônus':            '#4ADE80',
-    'Order Bumps':      '#60A5FA',
-    'Videoaulas':       '#F59E0B',
-    'Montagem Final':   '#A78BFA',
+    'Bônus': '#4ADE80',
+    'Order Bumps': '#60A5FA',
+    'Videoaulas': '#F59E0B',
+    'Montagem Final': '#A78BFA',
 };
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
@@ -54,6 +55,8 @@ export default function ProductCreator() {
     // Step 2
     const [hasOrderBump, setHasOrderBump] = useState(null);
     const [orderBumps, setOrderBumps] = useState([]);
+    const [savedBumpsLoading, setSavedBumpsLoading] = useState(false);
+    const [savedBumpsCount, setSavedBumpsCount] = useState(0);
     const [newOb, setNewOb] = useState({ nome: '', descricao: '', preco: '' });
 
     // Step 3
@@ -192,7 +195,32 @@ export default function ProductCreator() {
                     manualHtml={manualHtml}
                     onManualHtmlChange={setManualHtml}
                     canContinue={canGoToStep2}
-                    onContinue={() => setStep(2)}
+                    onContinue={async () => {
+                        setStep(2);
+                        // Auto-fetch saved order bumps from DB
+                        if (selectedLp && inputMode === 'gallery') {
+                            setSavedBumpsLoading(true);
+                            try {
+                                const saved = await fetchOrderBumpsByLp(selectedLp.id);
+                                if (saved.length > 0) {
+                                    setOrderBumps(saved.map(ob => ({
+                                        nome: ob.nome,
+                                        descricao: ob.descricao || '',
+                                        preco: ob.preco || '',
+                                        copyCheckout: ob.copy_checkout || '',
+                                        entregaveis: ob.entregaveis || '',
+                                        categoria: ob.categoria || 'complementar',
+                                    })));
+                                    setHasOrderBump(true);
+                                    setSavedBumpsCount(saved.length);
+                                }
+                            } catch (err) {
+                                console.warn('Failed to fetch saved order bumps:', err);
+                            } finally {
+                                setSavedBumpsLoading(false);
+                            }
+                        }
+                    }}
                 />
             )}
 
@@ -208,6 +236,8 @@ export default function ProductCreator() {
                     onNewObChange={setNewOb}
                     onBack={() => setStep(1)}
                     onAnalyze={handleAnalyze}
+                    savedBumpsLoading={savedBumpsLoading}
+                    savedBumpsCount={savedBumpsCount}
                 />
             )}
 
@@ -501,7 +531,7 @@ function LPCard({ lp, isSelected, onSelect }) {
 }
 
 // ─── Step 2: Configure ─────────────────────────────────────────────────────────
-function StepConfigure({ selectedLp, inputMode, hasOrderBump, onHasOrderBumpChange, orderBumps, onOrderBumpsChange, newOb, onNewObChange, onBack, onAnalyze }) {
+function StepConfigure({ selectedLp, inputMode, hasOrderBump, onHasOrderBumpChange, orderBumps, onOrderBumpsChange, newOb, onNewObChange, onBack, onAnalyze, savedBumpsLoading, savedBumpsCount }) {
     const canAnalyze = hasOrderBump !== null;
 
     const addOrderBump = () => {
@@ -556,6 +586,36 @@ function StepConfigure({ selectedLp, inputMode, hasOrderBump, onHasOrderBumpChan
                 }}>
                     Order Bumps aparecem no checkout como produtos complementares e precisam ser incluídos no plano de produção.
                 </p>
+
+                {/* Loading indicator */}
+                {savedBumpsLoading && (
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        padding: '0.6rem 1rem', background: 'rgba(96,165,250,0.08)',
+                        border: '1px solid rgba(96,165,250,0.2)', borderRadius: 8,
+                        marginBottom: '1rem', animation: 'pc-pulse 1.5s ease infinite'
+                    }}>
+                        <span style={{ fontSize: '14px' }}>⏳</span>
+                        <span style={{ color: '#60A5FA', fontSize: '12px', fontFamily: 'DM Sans', fontWeight: 500 }}>
+                            Buscando order bumps salvos no banco de dados...
+                        </span>
+                    </div>
+                )}
+
+                {/* Auto-loaded indicator */}
+                {!savedBumpsLoading && savedBumpsCount > 0 && (
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        padding: '0.6rem 1rem', background: 'rgba(74,222,128,0.08)',
+                        border: '1px solid rgba(74,222,128,0.2)', borderRadius: 8,
+                        marginBottom: '1rem'
+                    }}>
+                        <span style={{ fontSize: '14px' }}>✅</span>
+                        <span style={{ color: C.success, fontSize: '12px', fontFamily: 'DM Sans', fontWeight: 500 }}>
+                            {savedBumpsCount} order bump{savedBumpsCount > 1 ? 's' : ''} carregado{savedBumpsCount > 1 ? 's' : ''} do banco de dados
+                        </span>
+                    </div>
+                )}
 
                 <div style={{ display: 'flex', gap: '0.65rem', marginBottom: hasOrderBump ? '1.5rem' : 0 }}>
                     <button
@@ -737,10 +797,10 @@ function StepDashboard({ analyzing, progress, result, error, activeTab, onTabCha
     }
 
     const tabs = [
-        { id: 'overview', label: 'Visão Geral',        icon: '📦' },
-        { id: 'modulos',  label: 'Módulos',             icon: '📚', count: result.produto?.modulos?.length },
-        { id: 'bonus',    label: 'Bônus',               icon: '🎁', count: result.bonus?.length },
-        { id: 'plano',    label: 'Plano de Produção',   icon: '📋', count: result.planoProducao?.length },
+        { id: 'overview', label: 'Visão Geral', icon: '📦' },
+        { id: 'modulos', label: 'Módulos', icon: '📚', count: result.produto?.modulos?.length },
+        { id: 'bonus', label: 'Bônus', icon: '🎁', count: result.bonus?.length },
+        { id: 'plano', label: 'Plano de Produção', icon: '📋', count: result.planoProducao?.length },
     ];
 
     return (
@@ -783,10 +843,10 @@ function StepDashboard({ analyzing, progress, result, error, activeTab, onTabCha
             {/* Quick stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.85rem', marginBottom: '2rem' }}>
                 {[
-                    { label: 'Páginas',  value: `${result.produto?.paginas || '—'}+`,                                icon: '📄' },
-                    { label: 'Imagens',  value: `${result.produto?.imagens || '—'}+`,                                icon: '🖼️' },
-                    { label: 'Módulos',  value: result.produto?.modulosCount ?? result.produto?.modulos?.length ?? '—', icon: '📚' },
-                    { label: 'Bônus',    value: result.bonus?.length ?? '—',                                          icon: '🎁' },
+                    { label: 'Páginas', value: `${result.produto?.paginas || '—'}+`, icon: '📄' },
+                    { label: 'Imagens', value: `${result.produto?.imagens || '—'}+`, icon: '🖼️' },
+                    { label: 'Módulos', value: result.produto?.modulosCount ?? result.produto?.modulos?.length ?? '—', icon: '📚' },
+                    { label: 'Bônus', value: result.bonus?.length ?? '—', icon: '🎁' },
                 ].map((stat, i) => (
                     <div key={i} style={{
                         background: C.surface, border: `1px solid ${C.border}`,
@@ -839,9 +899,9 @@ function StepDashboard({ analyzing, progress, result, error, activeTab, onTabCha
             {/* Tab Content */}
             <div className="pc-tab-content" key={activeTab}>
                 {activeTab === 'overview' && <OverviewTab result={result} />}
-                {activeTab === 'modulos'  && <ModulosTab  result={result} expandedModule={expandedModule} onExpandModule={onExpandModule} />}
-                {activeTab === 'bonus'    && <BonusTab    result={result} />}
-                {activeTab === 'plano'    && <PlanoTab    result={result} onCreateItem={onCreateItem} />}
+                {activeTab === 'modulos' && <ModulosTab result={result} expandedModule={expandedModule} onExpandModule={onExpandModule} />}
+                {activeTab === 'bonus' && <BonusTab result={result} />}
+                {activeTab === 'plano' && <PlanoTab result={result} onCreateItem={onCreateItem} />}
             </div>
         </div>
     );
@@ -849,24 +909,24 @@ function StepDashboard({ analyzing, progress, result, error, activeTab, onTabCha
 
 // ─── Tab: Visão Geral ──────────────────────────────────────────────────────────
 function OverviewTab({ result }) {
-    const produto   = result.produto   || {};
-    const metricas  = result.metricas  || [];
+    const produto = result.produto || {};
+    const metricas = result.metricas || [];
     const validacao = result.validacao || {};
 
     const detailItems = [
-        { label: 'Formato',   value: produto.formato   || 'Ebook PDF' },
-        { label: 'Páginas',   value: `${produto.paginas || '?'}+` },
-        { label: 'Imagens',   value: `${produto.imagens || '?'}+` },
-        { label: 'Módulos',   value: produto.modulosCount ?? produto.modulos?.length ?? '?' },
-        { label: 'Garantia',  value: `${produto.garantia || 30} dias` },
-        { label: 'Público',   value: produto.publicoAlvo || '—' },
+        { label: 'Formato', value: produto.formato || 'Ebook PDF' },
+        { label: 'Páginas', value: `${produto.paginas || '?'}+` },
+        { label: 'Imagens', value: `${produto.imagens || '?'}+` },
+        { label: 'Módulos', value: produto.modulosCount ?? produto.modulos?.length ?? '?' },
+        { label: 'Garantia', value: `${produto.garantia || 30} dias` },
+        { label: 'Público', value: produto.publicoAlvo || '—' },
     ];
 
     const validItems = [
-        { key: 'paginasCumpridas',  label: 'Páginas prometidas cumpridas' },
-        { key: 'imagensCumpridas',  label: 'Imagens prometidas cumpridas' },
-        { key: 'modulosCumpridos',  label: 'Módulos listados cobertos' },
-        { key: 'bonusCumpridos',    label: 'Todos os bônus com instrução' },
+        { key: 'paginasCumpridas', label: 'Páginas prometidas cumpridas' },
+        { key: 'imagensCumpridas', label: 'Imagens prometidas cumpridas' },
+        { key: 'modulosCumpridos', label: 'Módulos listados cobertos' },
+        { key: 'bonusCumpridos', label: 'Todos os bônus com instrução' },
     ];
 
     return (
@@ -1052,7 +1112,7 @@ function ModulosTab({ result, expandedModule, onExpandModule }) {
 
 // ─── Tab: Bônus ────────────────────────────────────────────────────────────────
 function BonusTab({ result }) {
-    const bonus     = result.bonus     || [];
+    const bonus = result.bonus || [];
     const orderBumps = result.orderBumps || [];
 
     if (bonus.length === 0 && orderBumps.length === 0) {
@@ -1179,10 +1239,10 @@ function BonusTab({ result }) {
 const EBOOK_TYPES = new Set(['ebook_simples', 'ebook_imagens']);
 
 function PlanoTab({ result, onCreateItem }) {
-    const produto    = result.produto    || {};
-    const bonus      = result.bonus      || [];
+    const produto = result.produto || {};
+    const bonus = result.bonus || [];
     const orderBumps = result.orderBumps || [];
-    const modulos    = produto.modulos   || [];
+    const modulos = produto.modulos || [];
 
     const hasContent = modulos.length > 0 || bonus.length > 0 || orderBumps.length > 0;
     if (!hasContent) {
@@ -1207,12 +1267,12 @@ function PlanoTab({ result, onCreateItem }) {
                             meta={mod.paginasEstimadas ? `~${mod.paginasEstimadas}pg` : null}
                             topicos={mod.topicos}
                             onCriar={() => onCreateItem?.({
-                                _type:       'module',
-                                numero:      mod.numero ?? i + 1,
-                                nome:        mod.nome,
-                                topicos:     mod.topicos || [],
-                                paginas:     mod.paginasEstimadas,
-                                tipo:        produtoTipo,
+                                _type: 'module',
+                                numero: mod.numero ?? i + 1,
+                                nome: mod.nome,
+                                topicos: mod.topicos || [],
+                                paginas: mod.paginasEstimadas,
+                                tipo: produtoTipo,
                                 productNome: produto.nome,
                                 publicoAlvo: produto.publicoAlvo,
                             })}
@@ -1235,13 +1295,13 @@ function PlanoTab({ result, onCreateItem }) {
                             badgeColor={b.isSuper ? C.accent : null}
                             topicos={null}
                             onCriar={EBOOK_TYPES.has(b.tipo) ? () => onCreateItem?.({
-                                _type:       'bonus',
-                                nome:        b.nome,
-                                descricao:   b.descricao,
-                                tipo:        b.tipo,
-                                paginas:     b.paginasEstimadas,
+                                _type: 'bonus',
+                                nome: b.nome,
+                                descricao: b.descricao,
+                                tipo: b.tipo,
+                                paginas: b.paginasEstimadas,
                                 publicoAlvo: produto.publicoAlvo,
-                                isSuper:     b.isSuper,
+                                isSuper: b.isSuper,
                             }) : null}
                         />
                     ))}
@@ -1260,11 +1320,11 @@ function PlanoTab({ result, onCreateItem }) {
                             meta={ob.preco ? `R$${ob.preco}` : null}
                             topicos={null}
                             onCriar={EBOOK_TYPES.has(ob.tipo) ? () => onCreateItem?.({
-                                _type:       'bonus',
-                                nome:        ob.nome,
-                                descricao:   ob.descricao,
-                                tipo:        ob.tipo || 'ebook_simples',
-                                paginas:     30,
+                                _type: 'bonus',
+                                nome: ob.nome,
+                                descricao: ob.descricao,
+                                tipo: ob.tipo || 'ebook_simples',
+                                paginas: 30,
                                 publicoAlvo: produto.publicoAlvo,
                             }) : null}
                         />
@@ -1294,7 +1354,7 @@ function PlanoSection({ title, color, children }) {
 function DeliverableRow({ numero, nome, tipo, meta, badge, badgeColor, topicos, onCriar }) {
     const [open, setOpen] = useState(false);
     const tipoConfig = TIPO_CONFIG[tipo] || TIPO_CONFIG.ebook_simples;
-    const canCreate  = !!onCriar;
+    const canCreate = !!onCriar;
 
     return (
         <div style={{
@@ -1419,10 +1479,10 @@ function DeliverableRow({ numero, nome, tipo, meta, badge, badgeColor, topicos, 
 // ─── Analysis Progress ─────────────────────────────────────────────────────────
 function AnalysisProgress({ progress }) {
     const stages = [
-        { id: 'reading',   label: 'Lendo a landing page',     icon: '📄' },
-        { id: 'analyzing', label: 'Analisando promessas',      icon: '🔍' },
-        { id: 'parsing',   label: 'Estruturando plano',        icon: '📋' },
-        { id: 'done',      label: 'Plano concluído',           icon: '✅' },
+        { id: 'reading', label: 'Lendo a landing page', icon: '📄' },
+        { id: 'analyzing', label: 'Analisando promessas', icon: '🔍' },
+        { id: 'parsing', label: 'Estruturando plano', icon: '📋' },
+        { id: 'done', label: 'Plano concluído', icon: '✅' },
     ];
     const currentIdx = stages.findIndex(s => s.id === progress?.stage);
 
@@ -1456,7 +1516,7 @@ function AnalysisProgress({ progress }) {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', textAlign: 'left' }}>
                 {stages.map((s, i) => {
-                    const isDone   = i < currentIdx;
+                    const isDone = i < currentIdx;
                     const isActive = i === currentIdx;
                     return (
                         <div key={s.id} style={{

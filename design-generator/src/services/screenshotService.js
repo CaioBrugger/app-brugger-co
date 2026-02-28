@@ -1,20 +1,48 @@
+/**
+ * screenshotService.js
+ *
+ * Captura screenshots de URLs para análise visual.
+ * Estratégia em cascata:
+ *  1. design-cloner-server (Playwright nativo) — quando disponível via _serverData
+ *  2. ScreenshotOne API (se VITE_SCREENSHOT_API_KEY configurada)
+ *  3. Microlink API (gratuito, 50 req/dia, fallback final)
+ */
+
 const SCREENSHOT_API_KEY = import.meta.env.VITE_SCREENSHOT_API_KEY;
 const SCREENSHOT_API_BASE = 'https://api.screenshotone.com/take';
 
 /**
- * Captures real screenshots of a URL.
+ * Captura screenshots de um site.
+ * Se o servidor local já capturou (via _serverData.screenshot), reutiliza.
  *
- * Strategy (in order):
- *  1. ScreenshotOne API (if VITE_SCREENSHOT_API_KEY is set) — 3 viewports
- *  2. Google PageSpeed Insights (free, no key, real Chromium) — 1 viewport + thumbnail
+ * @param {string} url
+ * @param {{ serverScreenshot?: object }} options
  */
-export async function captureScreenshots(url) {
+export async function captureScreenshots(url, options = {}) {
+    // ── Prioridade 1: Screenshot do design-cloner-server ──────────────────────
+    if (options.serverScreenshot?.data) {
+        const ss = options.serverScreenshot;
+        const dataUrl = `data:${ss.mimeType};base64,${ss.data}`;
+        return {
+            screenshots: [{
+                mimeType: ss.mimeType,
+                data: ss.data,
+                label: 'Desktop (Playwright)',
+                width: ss.width || 1280,
+                height: ss.height || 800,
+                dataUrl,
+            }],
+            source: 'playwright-server',
+        };
+    }
+
+    // ── Prioridade 2: ScreenshotOne API ───────────────────────────────────────
     if (SCREENSHOT_API_KEY) {
         const result = await captureWithScreenshotOne(url);
         if (result.screenshots.length > 0) return result;
     }
 
-    // Free fallback — Microlink API (50 free/day, reliable, real Chromium)
+    // ── Prioridade 3: Microlink (fallback gratuito) ────────────────────────────
     return captureWithMicrolink(url);
 }
 
@@ -57,21 +85,24 @@ async function captureWithScreenshotOne(url) {
                 label: vp.label,
                 width: vp.width,
                 height: vp.fullPage ? 'full' : vp.height,
-                dataUrl: optimizedDataUrl
+                dataUrl: optimizedDataUrl,
             });
         } catch (err) {
             console.warn(`[ScreenshotOne] ${vp.label} failed:`, err.message);
         }
     }
 
-    return { screenshots, error: screenshots.length === 0 ? 'ScreenshotOne: all captures failed' : null };
+    return {
+        screenshots,
+        source: 'screenshotone',
+        error: screenshots.length === 0 ? 'ScreenshotOne: all captures failed' : null,
+    };
 }
 
 // ─── Microlink API (free, no API key, reliable) ────────────────────
 async function captureWithMicrolink(url) {
     const screenshots = [];
 
-    // We capture just Desktop Full Page to save up on quota (1 request)
     try {
         const apiUrl = `https://api.microlink.io?url=${encodeURIComponent(url)}&screenshot=true&fullPage=true&meta=false&waitForTimeout=2000`;
         const res = await fetch(apiUrl);
@@ -89,10 +120,10 @@ async function captureWithMicrolink(url) {
             screenshots.push({
                 mimeType: optimizedDataUrl.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png',
                 data: optimizedDataUrl.split(',')[1],
-                label: 'Desktop Full Page (Fallback)',
+                label: 'Desktop Full Page (Microlink)',
                 width: data.data.screenshot.width || 1280,
                 height: data.data.screenshot.height || 'full',
-                dataUrl: optimizedDataUrl
+                dataUrl: optimizedDataUrl,
             });
         }
     } catch (err) {
@@ -101,16 +132,16 @@ async function captureWithMicrolink(url) {
 
     return {
         screenshots,
-        error: screenshots.length === 0 ? 'Microlink: capture failed. Limite de requisições excedido?' : null
+        source: 'microlink',
+        error: screenshots.length === 0 ? 'Microlink: capture failed. Limite de requisições excedido?' : null,
     };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 /**
- * Resizes a base64 image if it exceeds the maxDimension.
- * This prevents 400 Bad Request errors from Claude/OpenRouter when processing huge full-page screenshots.
- * Anthropic has a strict 8000px limit on image dimensions.
+ * Redimensiona imagem base64 se exceder maxDimension.
+ * Anthropic tem limite de 8000px nas dimensões.
  */
 async function resizeImagePayload(dataUrl, maxDimension = 7500) {
     return new Promise((resolve) => {
@@ -119,11 +150,10 @@ async function resizeImagePayload(dataUrl, maxDimension = 7500) {
             let { width, height } = img;
 
             if (width <= maxDimension && height <= maxDimension) {
-                resolve(dataUrl); // No resize needed
+                resolve(dataUrl);
                 return;
             }
 
-            // Calculate new dimensions keeping aspect ratio
             if (width > height) {
                 height = Math.round((height * maxDimension) / width);
                 width = maxDimension;
@@ -136,16 +166,12 @@ async function resizeImagePayload(dataUrl, maxDimension = 7500) {
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
-
-            // Fill with white background in case of transparency
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, width, height);
             ctx.drawImage(img, 0, 0, width, height);
-
-            // Convert to JPEG for better compression of large images
             resolve(canvas.toDataURL('image/jpeg', 0.85));
         };
-        img.onerror = () => resolve(dataUrl); // Fallback to original if load fails
+        img.onerror = () => resolve(dataUrl);
         img.src = dataUrl;
     });
 }

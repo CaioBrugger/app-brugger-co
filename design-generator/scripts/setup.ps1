@@ -80,7 +80,80 @@ export default defineConfig({
 
 $viteConfig | Out-File -FilePath "$configDir\vite.config.js" -Encoding utf8 -NoNewline
 
+# 5. Gerar scripts/dev.js com caminhos corretos para este PC
+$scriptsDir = Join-Path $local "scripts"
+New-Item -ItemType Directory -Force $scriptsDir | Out-Null
+
+$localFwd      = $local.Replace('\', '/')
+$configDirFwdE = $configDir.Replace('\', '/')
+
+$devScript = @"
+/**
+ * scripts/dev.js — gerado automaticamente pelo setup.ps1
+ * Inicia design-cloner-server (3333) + Vite (3000) em conjunto.
+ */
+import { spawn } from 'child_process';
+import { copyFileSync, readFileSync, existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join, resolve } from 'path';
+
+const __dirname    = dirname(fileURLToPath(import.meta.url));
+const APPDATA_ROOT = resolve(__dirname, '..');
+const CONFIG_DIR   = '$configDirFwdE';
+const VITE_CONFIG  = join(CONFIG_DIR, 'vite.config.js');
+const SERVER_PORT  = 3333;
+const SERVER_URL   = `http://localhost:`+`${SERVER_PORT}/health`;
+
+// Sincronizar server.js
+const serverDst = join(APPDATA_ROOT, 'design-cloner-server.cjs');
+const serverSrc = '$appRoot/design-cloner-server/server.js';
+if (existsSync(serverSrc)) {
+    try { copyFileSync(serverSrc, serverDst); console.log('\x1b[36m[dev]\x1b[0m \u2713 design-cloner-server.cjs sincronizado'); }
+    catch (e) { console.warn('\x1b[33m[dev]\x1b[0m \u26a0 Falha ao sincronizar server.js:', e.message); }
+}
+
+async function waitForServer(url, ms = 20000) {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+        try { const r = await fetch(url, { signal: AbortSignal.timeout(1000) }); if (r.ok) return true; } catch {}
+        await new Promise(r => setTimeout(r, 300));
+    }
+    return false;
+}
+
+let designClonerProc = null;
+if (existsSync(serverDst)) {
+    console.log(`\x1b[36m[dev]\x1b[0m Iniciando design-cloner-server na porta `+`${SERVER_PORT}...`);
+    designClonerProc = spawn('node', ['design-cloner-server.cjs'], { cwd: APPDATA_ROOT, stdio: ['ignore','pipe','pipe'] });
+    designClonerProc.stdout.on('data', d => process.stdout.write('\x1b[36m[design-cloner]\x1b[0m ' + d));
+    designClonerProc.stderr.on('data', d => process.stderr.write('\x1b[36m[design-cloner]\x1b[0m ' + d));
+    const ready = await waitForServer(SERVER_URL, 20000);
+    if (ready) console.log(`\x1b[36m[dev]\x1b[0m \u2713 design-cloner-server pronto em http://localhost:`+`${SERVER_PORT}`);
+    else console.warn('\x1b[33m[dev]\x1b[0m \u26a0 design-cloner-server nao respondeu a tempo.');
+}
+
+const viteBin  = join(APPDATA_ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
+const viteArgs = ['--config', VITE_CONFIG];
+if (process.argv[2] === 'build')   viteArgs.unshift('build');
+if (process.argv[2] === 'preview') viteArgs.unshift('preview');
+
+console.log('\x1b[35m[dev]\x1b[0m Iniciando Vite...');
+const viteProc = spawn('node', [viteBin, ...viteArgs], { cwd: APPDATA_ROOT, stdio: 'inherit' });
+viteProc.on('exit', code => { if (designClonerProc) { try { designClonerProc.kill(); } catch {} } process.exit(code ?? 0); });
+
+const cleanup = () => {
+    if (designClonerProc) { try { designClonerProc.kill(); } catch {} }
+    if (viteProc)          { try { viteProc.kill();          } catch {} }
+};
+process.on('SIGINT', cleanup);
+process.on('SIGTERM', cleanup);
+process.on('exit', cleanup);
+"@
+
+$devScript | Out-File -FilePath "$scriptsDir\dev.js" -Encoding utf8 -NoNewline
+Write-Host "==> scripts/dev.js gerado em $scriptsDir" -ForegroundColor Green
+
 Write-Host ""
 Write-Host "==> Setup concluido!" -ForegroundColor Green
-Write-Host "    Execute 'npm run dev' para iniciar o servidor." -ForegroundColor Cyan
+Write-Host "    Execute 'npm run dev' para iniciar Vite + design-cloner-server juntos." -ForegroundColor Cyan
 Write-Host ""

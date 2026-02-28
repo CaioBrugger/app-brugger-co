@@ -658,11 +658,13 @@ Cada elemento deve conter o HTML completo para aquela seção com CSS embutido e
 5. Mobile-First responsivo
 6. Na PRIMEIRA seção, importe as fontes do Google Fonts no <style>
 
-## REGRAS DE IMAGENS (OBRIGATÓRIO):
+## REGRAS DE IMAGENS (OBRIGATÓRIO — CRÍTICO):
 - Quando uma seção tiver "suggestedImages" no JSON da copy, você DEVE usar esses valores como src em tags <img>
 - Formato: <img src="IMAGE_PLACEHOLDER_s02-hero" alt="..." style="width:100%; max-width:600px; border-radius:12px; object-fit:cover;">
 - SEMPRE coloque max-width, border-radius e object-fit nas imagens
 - NÃO invente URLs de imagem. Use SOMENTE as suggestedImages fornecidas
+- 🚨 PROIBIDO FABRICAR IMAGENS: NUNCA crie tags <img> com texto descritivo, nomes de seções, ou frases como valor de src. O atributo src DEVE conter APENAS uma string IMAGE_PLACEHOLDER_xxx ou uma URL começando com http/data:
+- Seções SEM "suggestedImages" NÃO devem ter tags <img>. Se precisar de visual decorativo, use CSS backgrounds
 
 ## REGRAS DE ANIMAÇÕES (OBRIGATÓRIO):
 Adicione estas classes CSS nos elementos para animações de scroll:

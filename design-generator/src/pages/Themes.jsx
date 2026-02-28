@@ -3,7 +3,7 @@ import { callGeminiWithImages, callGemini } from '../api';
 import { callClaudeWithImages } from '../services/claude';
 import { buildExtractThemePrompt, buildThemePreviewPrompt, buildVisualAnalysisPrompt } from '../prompt';
 import { fetchThemes, saveTheme, deleteTheme } from '../services/themesService';
-import { fetchSiteStyles } from '../services/urlFetcher';
+import { fetchSiteStyles, checkDesignClonerServer } from '../services/urlFetcher';
 import { captureScreenshots } from '../services/screenshotService';
 
 function fileToBase64(file) {
@@ -19,8 +19,8 @@ function fileToBase64(file) {
 }
 
 const STEPS = [
-    { id: 'fetch', label: 'Buscando CSS e HTML', icon: '🔍' },
-    { id: 'screenshot', label: 'Capturando screenshots', icon: '📸' },
+    { id: 'fetch', label: 'Renderizando site (Playwright)', icon: '🔍' },
+    { id: 'screenshot', label: 'Capturando screenshot', icon: '📸' },
     { id: 'vision', label: 'Claude analisando visualmente', icon: '🧠' },
     { id: 'extract', label: 'Extraindo Design System', icon: '⚛️' },
     { id: 'preview', label: 'Gerando preview', icon: '🎨' },
@@ -108,15 +108,23 @@ export default function Themes() {
         };
 
         try {
-            // ── Step 1: Fetch CSS + HTML via proxy ──
+            // ── Step 1: Fetch via servidor Playwright ou CORS proxy ──
             let siteData = null;
             const firstUrl = urls.trim() ? urls.trim().split(',')[0].trim() : null;
             if (firstUrl) {
                 try {
+                    // checkDesignClonerServer() é chamado internamente pelo fetchSiteStyles
                     siteData = await fetchSiteStyles(firstUrl);
                     if (siteData?.success) {
-                        const cssSize = siteData.css ? `${(siteData.css.length / 1024).toFixed(1)}KB` : '0KB';
-                        updateStatus('fetch', '✅', `CSS extraído (${cssSize})`);
+                        const isPlaywright = siteData.source === 'playwright-server';
+                        const palette = siteData._serverData?.colorPalette?.palette?.length || 0;
+                        const cssVarsCount = siteData._serverData?.cssVarsCount || 0;
+                        if (isPlaywright) {
+                            updateStatus('fetch', '✅', `Playwright: ${palette} cores clusterizadas, ${cssVarsCount} CSS vars`);
+                        } else {
+                            const cssSize = siteData.css ? `${(siteData.css.length / 1024).toFixed(1)}KB` : '0KB';
+                            updateStatus('fetch', '⚠️', `CORS proxy (servidor offline): ${cssSize}`);
+                        }
                     } else {
                         updateStatus('fetch', '⚠️', 'CSS parcial ou indisponível');
                     }
@@ -129,17 +137,20 @@ export default function Themes() {
 
             setCurrentStep(1);
 
-            // ── Step 2: Capture screenshots (ScreenshotOne API) ──
+            // ── Step 2: Screenshot — reusar do servidor se já capturado ──
             let capturedScreenshots = [];
             if (firstUrl) {
                 try {
-                    const ssResult = await captureScreenshots(firstUrl);
+                    // Se o servidor já capturou screenshot, reutilizar
+                    const serverScreenshot = siteData?._serverData?.screenshot || null;
+                    const ssResult = await captureScreenshots(firstUrl, { serverScreenshot });
                     capturedScreenshots = ssResult.screenshots || [];
                     setScreenshots(capturedScreenshots);
                     if (capturedScreenshots.length > 0) {
-                        updateStatus('screenshot', '✅', `${capturedScreenshots.length} screenshot(s) capturado(s)`);
+                        const source = ssResult.source === 'playwright-server' ? 'Playwright' : ssResult.source;
+                        updateStatus('screenshot', '✅', `${capturedScreenshots.length} screenshot(s) via ${source}`);
                     } else {
-                        updateStatus('screenshot', '❌', ssResult.error || 'Nenhum screenshot capturado');
+                        updateStatus('screenshot', '❌', 'Nenhum screenshot capturado');
                     }
                 } catch (ssErr) {
                     updateStatus('screenshot', '❌', ssErr.message);
@@ -165,7 +176,6 @@ export default function Themes() {
                         `Analyze these ${allImages.length} screenshot(s) of the website "${name.trim()}" and extract the complete design system. Return ONLY valid JSON.`,
                         allImages
                     );
-                    // Parse Claude's response
                     try {
                         visionResult = typeof visionRaw === 'string'
                             ? JSON.parse(visionRaw.replace(/```json?\s*/g, '').replace(/```/g, '').trim())
@@ -189,18 +199,19 @@ export default function Themes() {
             const isUrlExtraction = !!firstUrl;
             const hasVisual = !!visionResult;
             const hasCss = siteData?.success && siteData.css?.length > 100;
+            const hasServerData = !!(siteData?._serverData?.colorPalette?.palette?.length);
             const hasUserImages = images.length > 0;
 
-            if (isUrlExtraction && !hasVisual && !hasCss && !hasUserImages) {
+            if (isUrlExtraction && !hasVisual && !hasCss && !hasServerData && !hasUserImages) {
                 updateStatus('extract', '❌', 'Sem dados suficientes do site');
                 throw new Error(
                     'Não foi possível capturar screenshots nem CSS válido deste site. ' +
-                    'Tente: (1) Verificar se a VITE_SCREENSHOT_API_KEY está configurada no .env, ' +
+                    'Tente: (1) Iniciar o design-cloner-server/start-server.bat para extração via Playwright, ' +
                     'ou (2) Fazer upload manual de screenshots do site na seção "Screenshots".'
                 );
             }
 
-            // ── Step 4: Gemini — merge CSS + visual analysis → final tokens ──
+            // ── Step 4: Gemini — merge todos os dados → final tokens ──
             const prompt = buildExtractThemePrompt(name.trim(), specs.trim(), urls.trim(), siteData, visionResult);
 
             let tokens;
@@ -211,7 +222,8 @@ export default function Themes() {
             }
 
             setResult(tokens);
-            updateStatus('extract', '✅', `Design System extraído${hasVisual ? ' (visual + CSS)' : hasCss ? ' (apenas CSS)' : ''}`);
+            const extractSource = hasServerData ? 'Playwright + k-means' : hasVisual ? 'visual + CSS' : hasCss ? 'CSS' : 'descrição';
+            updateStatus('extract', '✅', `Design System extraído (${extractSource})`);
             setCurrentStep(4);
 
             // ── Step 5: Generate preview ──

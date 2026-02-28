@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 
-const ACCENT  = '#C9A962';
-const BG      = '#0C0C0E';
+const ACCENT = '#C9A962';
+const BG = '#0C0C0E';
 const SURFACE = 'rgba(15,15,18,0.99)';
-const BORDER  = 'rgba(201,169,98,0.15)';
-const TEXT    = '#F5F0E8';
-const MUTED   = 'rgba(245,240,232,0.42)';
+const BORDER = 'rgba(201,169,98,0.15)';
+const TEXT = '#F5F0E8';
+const MUTED = 'rgba(245,240,232,0.42)';
 
-function buildPreviewHtml(html) {
+function buildPreviewHtml(html, themeTokens) {
+    const cssVars = themeTokens?.meta?.cssVariables || '';
     return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -15,8 +16,9 @@ function buildPreviewHtml(html) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
   <style>
+    ${cssVars}
     *    { box-sizing: border-box; }
-    body { margin: 0; padding: 0; background: #0C0C0E; overflow-x: hidden; }
+    body { margin: 0; padding: 0; background: var(--bg, #0C0C0E); color: var(--text, #F5F0E8); overflow-x: hidden; }
     .lp-animate, .lp-fade-left, .lp-fade-right { opacity: 1 !important; transform: none !important; }
   </style>
 </head>
@@ -24,10 +26,10 @@ function buildPreviewHtml(html) {
 </html>`;
 }
 
-export default function SectionVariationPicker({ variations, sectionId, onPick, onClose }) {
-    const [active, setActive]       = useState(0);
-    const [loaded, setLoaded]       = useState(false);
-    const [picking, setPicking]     = useState(false);
+export default function SectionVariationPicker({ variations, sectionId, themeTokens, onPick, onClose }) {
+    const [active, setActive] = useState(0);
+    const [loaded, setLoaded] = useState(false);
+    const [picking, setPicking] = useState(false);
 
     // Reset loaded state when variation changes
     useEffect(() => { setLoaded(false); }, [active]);
@@ -35,7 +37,7 @@ export default function SectionVariationPicker({ variations, sectionId, onPick, 
     // Keyboard navigation
     useEffect(() => {
         const onKey = (e) => {
-            if (e.key === 'ArrowLeft')  setActive(i => Math.max(0, i - 1));
+            if (e.key === 'ArrowLeft') setActive(i => Math.max(0, i - 1));
             if (e.key === 'ArrowRight') setActive(i => Math.min((variations?.length ?? 1) - 1, i + 1));
             if (e.key === 'Enter' && !picking) handlePick();
             if (e.key === 'Escape') onClose();
@@ -329,7 +331,7 @@ export default function SectionVariationPicker({ variations, sectionId, onPick, 
 
                         <iframe
                             key={active}
-                            srcDoc={buildPreviewHtml(current.html)}
+                            srcDoc={buildPreviewHtml(current.html, themeTokens)}
                             style={{
                                 width: '100%', height: '100%',
                                 border: 'none', background: BG,

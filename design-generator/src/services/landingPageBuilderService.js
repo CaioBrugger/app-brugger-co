@@ -11,6 +11,28 @@ import frontendSpecialistRules from '../../../.agent/agents/frontend-specialist.
 
 const IMAGE_SECTIONS = ['hero', 'amostra', 'showcase', 'conteudo', 'conteúdo', 'desafio', 'bonus'];
 
+// Regex constructed via string to avoid Vite parser issues with angle brackets in regex literals
+const IMG_TAG_REGEX = new RegExp('<img\\b[^>]*>', 'gi');
+const SRC_ATTR_REGEX = new RegExp('src=["\']([^"\']*)["\']', 'i');
+
+/**
+ * Sanitizes HTML to remove img tags with invalid src (text descriptions instead of URLs).
+ * Gemini sometimes fabricates img tags with descriptive text as src, causing broken images.
+ */
+function sanitizeImageSrcs(html) {
+    if (!html) return html;
+    return html.replace(IMG_TAG_REGEX, (imgTag) => {
+        const srcMatch = imgTag.match(SRC_ATTR_REGEX);
+        if (!srcMatch) return imgTag;
+        const src = srcMatch[1];
+        if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('IMAGE_PLACEHOLDER_')) {
+            return imgTag;
+        }
+        console.warn('[LP Builder] Removendo img com src inválido:', src.substring(0, 60));
+        return '';
+    });
+}
+
 const PREMIUM_ANIMATIONS_CSS = `
 <style>
 /* === PREMIUM SCROLL ANIMATIONS === */
@@ -130,11 +152,7 @@ export const generateFullLandingPage = async (productDescription, themeTokens, o
                             console.log(`[LP Builder] ✅ Image generated for ${section.id}`);
                         }
                     } catch (imgError) {
-                        console.warn(`[LP Builder] Image failed for ${section.id}:`, imgError.message);
-                        const safePrompt = encodeURIComponent(`Cinematic photorealistic luxury dark biblical: ${productDescription} - ${section.name}`);
-                        section.suggestedImages = [
-                            `https://image.pollinations.ai/prompt/${safePrompt}?width=800&height=600&nologo=true&seed=${Date.now()}`
-                        ];
+                        console.warn(`[LP Builder] ❌ Image failed for ${section.id}:`, imgError.message);
                     }
                 })();
                 imagePromises.push(promise);
@@ -164,9 +182,14 @@ export const generateFullLandingPage = async (productDescription, themeTokens, o
                 Object.keys(imageDictionary).forEach(placeholder => {
                     finalHtml = finalHtml.split(placeholder).join(imageDictionary[placeholder]);
                 });
+                finalHtml = sanitizeImageSrcs(finalHtml);
                 sectionResult.html = finalHtml;
             }
         });
+
+        const validImages = Object.keys(imageDictionary).length;
+        const totalSections = copySections.filter(s => IMAGE_SECTIONS.some(kw => (s.id || '').toLowerCase().includes(kw))).length;
+        console.log(`[LP Builder] Imagens: ${validImages}/${totalSections} seções com imagem real`);
 
         // Step 6: Inject premium animations CSS + JS into first section
         if (designResponse.length > 0) {

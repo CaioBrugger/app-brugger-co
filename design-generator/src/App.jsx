@@ -10,6 +10,7 @@ const ProductCreator = lazy(() => import('./pages/ProductCreator'));
 const Themes = lazy(() => import('./pages/Themes'));
 const LandingPageBuilder = lazy(() => import('./pages/LandingPageBuilder'));
 const Vitrine = lazy(() => import('./pages/Vitrine'));
+const OrderBumpsCreator = lazy(() => import('./pages/OrderBumpsCreator'));
 const Overview = lazy(() => import('./pages/design-system/Overview'));
 const Identity = lazy(() => import('./pages/design-system/Identity'));
 const Colors = lazy(() => import('./pages/design-system/tokens/Colors'));
@@ -38,6 +39,7 @@ export default function App() {
                         <Route path="/products" element={<Products />} />
                         <Route path="/product-creator" element={<ProductCreator />} />
                         <Route path="/themes" element={<Themes />} />
+                        <Route path="/order-bumps" element={<OrderBumpsCreator />} />
                         <Route path="/vitrine" element={<Vitrine />} />
 
                         {/* Design System Routes */}

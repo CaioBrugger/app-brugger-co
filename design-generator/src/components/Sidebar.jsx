@@ -92,6 +92,18 @@ const tools = [
         )
     },
     {
+        path: '/order-bumps',
+        label: 'Order Bumps',
+        icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 12v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6" />
+                <polyline points="12 3 12 15" />
+                <polyline points="8 11 12 15 16 11" />
+                <line x1="4" y1="3" x2="20" y2="3" />
+            </svg>
+        )
+    },
+    {
         path: '/vitrine',
         label: 'Vitrine',
         icon: (

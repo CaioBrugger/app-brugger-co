@@ -27,6 +27,7 @@ export default function LandingPageBuilder() {
     const [selectedSectionId, setSelectedSectionId] = useState(null);
     const [sectionVariations, setSectionVariations] = useState([]);
     const [showVariationPicker, setShowVariationPicker] = useState(false);
+    const [variationTargetId, setVariationTargetId] = useState(null);
     const [saveMenuOpen, setSaveMenuOpen] = useState(false);
 
     // Save state
@@ -39,6 +40,7 @@ export default function LandingPageBuilder() {
     const llmDropdownRef = useRef(null);
     const saveMenuRef = useRef(null);
     const saveNameRef = useRef(null);
+    const generationCounterRef = useRef(0);
 
     useEffect(() => {
         loadThemes();
@@ -48,9 +50,9 @@ export default function LandingPageBuilder() {
             try {
                 const { name, description, themeId, sections: loadedSections } = JSON.parse(raw);
                 if (description) setProductDescription(description);
-                if (themeId)     setSelectedThemeId(themeId);
+                if (themeId) setSelectedThemeId(themeId);
                 if (loadedSections?.length) setSections(loadedSections);
-            } catch (_) {}
+            } catch (_) { }
             sessionStorage.removeItem('lp_load');
         }
         const handleClickOutside = (e) => {
@@ -100,20 +102,31 @@ export default function LandingPageBuilder() {
         const sectionToUpdate = sections.find(s => s.id === sectionId);
         if (!sectionToUpdate || !theme) return;
 
-        setGenerationState({ isGenerating: true, step: 'refine', message: `Gerando 3 variações para ${sectionId}...`, percentage: 50 });
+        // Incrementa o token de geração para invalidar respostas anteriores em andamento
+        generationCounterRef.current += 1;
+        const thisGeneration = generationCounterRef.current;
+
+        setVariationTargetId(sectionId);
+        setShowVariationPicker(false);
         setSectionVariations([]);
+        setGenerationState({ isGenerating: true, step: 'refine', message: `Gerando 3 variações para ${sectionId}...`, percentage: 50 });
 
         try {
             const result = await regenerateLandingPageSection(sectionId, sectionToUpdate.html, theme.tokens, instructions);
+            // Descarta resultado se uma geração mais nova foi iniciada
+            if (thisGeneration !== generationCounterRef.current) return;
             if (result.variations && result.variations.length > 0) {
                 setSectionVariations(result.variations);
                 setShowVariationPicker(true);
             }
         } catch (error) {
+            if (thisGeneration !== generationCounterRef.current) return;
             console.error("Regeneration error:", error);
-            alert("Erro ao regerar sessão: " + error.message);
+            alert("Erro ao regerar seção: " + error.message);
         } finally {
-            setGenerationState({ isGenerating: false, step: '', message: '', percentage: 0 });
+            if (thisGeneration === generationCounterRef.current) {
+                setGenerationState({ isGenerating: false, step: '', message: '', percentage: 0 });
+            }
         }
     };
 
@@ -122,6 +135,7 @@ export default function LandingPageBuilder() {
         setSectionVariations([]);
         setShowVariationPicker(false);
         setSelectedSectionId(null);
+        setVariationTargetId(null);
     };
 
     const openSaveModal = () => {
@@ -136,10 +150,10 @@ export default function LandingPageBuilder() {
         setIsSaving(true);
         try {
             const saved = await saveLandingPage({
-                name:        saveName.trim(),
+                name: saveName.trim(),
                 description: productDescription,
-                themeId:     selectedThemeId,
-                modelUsed:   selectedModel,
+                themeId: selectedThemeId,
+                modelUsed: selectedModel,
                 sections,
             });
             setSaveModalOpen(false);
@@ -178,7 +192,8 @@ export default function LandingPageBuilder() {
             {showVariationPicker && sectionVariations.length > 0 && (
                 <SectionVariationPicker
                     variations={sectionVariations}
-                    sectionId={selectedSectionId}
+                    sectionId={variationTargetId}
+                    themeTokens={themes.find(t => t.id === selectedThemeId)?.tokens}
                     onPick={handlePickVariation}
                     onClose={() => { setShowVariationPicker(false); setSectionVariations([]); }}
                 />
@@ -358,8 +373,6 @@ export default function LandingPageBuilder() {
                         viewMode={viewMode}
                         onSelectSection={(id) => {
                             setSelectedSectionId(id);
-                            setSectionVariations([]);
-                            setShowVariationPicker(false);
                             handleRegenerateSection(id, '');
                         }}
                     />
@@ -371,9 +384,7 @@ export default function LandingPageBuilder() {
                     sections={sections}
                     onRegenerate={handleRegenerateSection}
                     isGenerating={generationState.isGenerating}
-                    onClose={() => { setSelectedSectionId(null); setSectionVariations([]); setShowVariationPicker(false); }}
-                    variations={sectionVariations}
-                    onPickVariation={handlePickVariation}
+                    onClose={() => { setSelectedSectionId(null); setSectionVariations([]); setShowVariationPicker(false); setVariationTargetId(null); }}
                 />
             </div>
 

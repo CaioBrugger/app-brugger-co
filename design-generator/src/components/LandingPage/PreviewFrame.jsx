@@ -3,17 +3,19 @@ import { useEffect, useRef } from 'react';
 export default function PreviewFrame({ html, viewMode, onSelectSection }) {
     const iframeRef = useRef(null);
 
+    const onSelectSectionRef = useRef(onSelectSection);
+    useEffect(() => { onSelectSectionRef.current = onSelectSection; });
+
     useEffect(() => {
         const handleMessage = (event) => {
-            // Check origin if necessary, for now we accept any since it's an iframe we control
-            if (event.data && event.data.type === 'SELECT_SECTION' && onSelectSection) {
-                onSelectSection(event.data.id);
+            if (event.data && event.data.type === 'SELECT_SECTION') {
+                onSelectSectionRef.current?.(event.data.id);
             }
         };
 
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [onSelectSection]);
+    }, []);
 
     useEffect(() => {
         if (iframeRef.current && html) {
