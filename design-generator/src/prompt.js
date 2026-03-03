@@ -1,5 +1,6 @@
 import designSystem from './data/design-system.md?raw';
 import copySystem from './data/copy-system.md?raw';
+import ebookCoverPromptRaw from './prompts/ebook-cover-prompt.md?raw';
 
 export function buildGeneratePrompt(userInput, scope) {
   const scopeDesc = {
@@ -101,19 +102,39 @@ ESTILO OBRIGATÓRIO:
 - Arte digital premium, resolução profissional
 - Estética "Dark Luxury Biblical" — elegância e profundidade espiritual`;
 
-  // ── HERO SECTION ──
+  // ── HERO SECTION — Ebook Cover Image ──
   if (id.includes('hero')) {
     const coreSubject = extractCoreSubject(productTheme);
-    return `Gere uma imagem HERO épica de tela cheia para a seção principal de uma landing page sobre "${coreSubject}".
+    // Extrair o título do produto do headline ou do tema
+    const productTitle = headline || coreSubject;
 
-O QUE MOSTRAR: Uma composição dramática e cinematic que represente visualmente o tema "${coreSubject}". ${headline ? `A imagem deve evocar o conceito: "${headline}".` : ''}
-- Perspectiva ampla, grandiosa, como um pôster de filme épico
-- O tema central "${coreSubject}" deve ser o foco visual absoluto
-- Profundidade atmosférica: luz dourada cortando através de escuridão
-- Composição que deixe espaço do lado esquerdo para texto sobreposto
-${STYLE_BASE}
+    // Extrair o prompt do template .md (tudo entre os ``` do bloco de código)
+    const promptMatch = ebookCoverPromptRaw.match(/```\n([\s\S]*?)\n```/);
+    const coverTemplate = promptMatch ? promptMatch[1] : '';
 
-IMPORTANTE: A imagem é o visual CENTRAL da página — deve causar impacto imediato e comunicar "isto é premium e autoritativo".`;
+    if (coverTemplate) {
+      // Substituir placeholder {{TITLE}} pelo título real do produto
+      return coverTemplate.replace(/\{\{TITLE\}\}/g, productTitle);
+    }
+
+    // Fallback caso o template não carregue
+    return `Create a premium, professional EBOOK COVER design.
+
+TITLE TEXT (must appear prominently on the cover): "${productTitle}"
+PUBLISHER TEXT (must appear at the bottom): "Editora Saber Cristão"
+Include a circular golden "BEST SELLER" seal/badge in the upper-right area.
+
+COVER DESIGN:
+- Format: vertical book cover (2:3 aspect ratio, portrait)
+- Deep dark background (#0C0C0E to #1a1a2e gradient)
+- Gold (#C9A962), warm amber, deep burgundy accents
+- Dramatic volumetric golden light rays
+- Elegant serif font for the title
+- Thin golden border around the cover edges
+- Thematic biblical imagery related to "${productTitle}" as subtle background
+- Overall feel: luxurious, authoritative, spiritual, premium
+- Ultra-high resolution, sharp details, professional typography
+- No spelling errors, no garbled text`;
   }
 
   // ── AMOSTRA / SAMPLE SECTION ──
