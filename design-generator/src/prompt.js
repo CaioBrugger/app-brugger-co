@@ -104,9 +104,10 @@ ESTILO OBRIGATÓRIO:
 
   // ── HERO SECTION — Ebook Cover Image ──
   if (id.includes('hero')) {
+    // Usar o TÍTULO DO PRODUTO (curto), NÃO a headline de marketing (longa)
+    // extractCoreSubject transforma "Ebook sobre Geografia Bíblica com 280 imagens" → "Geografia Bíblica"
     const coreSubject = extractCoreSubject(productTheme);
-    // Extrair o título do produto do headline ou do tema
-    const productTitle = headline || coreSubject;
+    const productTitle = coreSubject;
 
     // Extrair o prompt do template .md (tudo entre os ``` do bloco de código)
     const promptMatch = ebookCoverPromptRaw.match(/```\n([\s\S]*?)\n```/);
@@ -118,23 +119,15 @@ ESTILO OBRIGATÓRIO:
     }
 
     // Fallback caso o template não carregue
-    return `Create a premium, professional EBOOK COVER design.
-
-TITLE TEXT (must appear prominently on the cover): "${productTitle}"
-PUBLISHER TEXT (must appear at the bottom): "Editora Saber Cristão"
-Include a circular golden "BEST SELLER" seal/badge in the upper-right area.
-
-COVER DESIGN:
-- Format: vertical book cover (2:3 aspect ratio, portrait)
-- Deep dark background (#0C0C0E to #1a1a2e gradient)
-- Gold (#C9A962), warm amber, deep burgundy accents
-- Dramatic volumetric golden light rays
-- Elegant serif font for the title
-- Thin golden border around the cover edges
-- Thematic biblical imagery related to "${productTitle}" as subtle background
-- Overall feel: luxurious, authoritative, spiritual, premium
-- Ultra-high resolution, sharp details, professional typography
-- No spelling errors, no garbled text`;
+    return `Design a stunning, premium PHYSICAL BOOK COVER for a bestselling Christian ebook.
+BOOK TITLE (render prominently): "${productTitle}"
+PUBLISHER (at bottom): "Editora Saber Cristão"
+Include a golden "BEST SELLER" laurel wreath seal at the top.
+Ornamental golden frame with olive branches or filigree.
+Rich thematic biblical illustration related to "${productTitle}" as central imagery.
+Deep navy/dark background, gold and amber accents, elegant serif typography.
+Must look like a real, professionally published premium hardcover book with 3D perspective and visible spine.
+2:3 portrait format. Ultra-high resolution, no garbled text.`;
   }
 
   // ── AMOSTRA / SAMPLE SECTION ──
