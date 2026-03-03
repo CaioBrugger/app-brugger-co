@@ -684,6 +684,66 @@ function normalizeSpacing(values) {
     return { unit, scale: DEFAULT_SCALE(unit) };
 }
 
+// ─── Image Proxy (sem CORS) ───────────────────────────────────────────────────
+// Usado pelo imageGeneratorService para baixar imagens geradas pelo FLUX/inference.sh
+// sem restrições de CORS do browser.
+const https = require('https');
+const http  = require('http');
+
+app.get('/fetch-image', (req, res) => {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    // Segue redirects (até 5 saltos) — necessário para URLs do inference.sh / FLUX CDN
+    function fetchWithRedirects(targetUrl, redirectsLeft) {
+        let parsed;
+        try { parsed = new URL(targetUrl); } catch {
+            if (!res.headersSent) res.status(400).json({ error: 'URL inválida' });
+            return;
+        }
+
+        const client = parsed.protocol === 'https:' ? https : http;
+        const request = client.get(targetUrl, (imgRes) => {
+            // Seguir redirect
+            if ([301, 302, 303, 307, 308].includes(imgRes.statusCode)) {
+                imgRes.resume(); // consumir body para liberar a conexão
+                if (redirectsLeft <= 0) {
+                    if (!res.headersSent) res.status(502).json({ error: 'Muitos redirects' });
+                    return;
+                }
+                const location = imgRes.headers['location'];
+                if (!location) {
+                    if (!res.headersSent) res.status(502).json({ error: 'Redirect sem Location header' });
+                    return;
+                }
+                const nextUrl = new URL(location, targetUrl).toString();
+                console.log(`[fetch-image] Redirect ${imgRes.statusCode} → ${nextUrl}`);
+                fetchWithRedirects(nextUrl, redirectsLeft - 1);
+                return;
+            }
+
+            if (imgRes.statusCode < 200 || imgRes.statusCode >= 400) {
+                return res.status(imgRes.statusCode).json({ error: `Upstream ${imgRes.statusCode}` });
+            }
+            res.set('Content-Type', imgRes.headers['content-type'] || 'image/jpeg');
+            res.set('Access-Control-Allow-Origin', '*');
+            imgRes.pipe(res);
+        });
+
+        request.on('error', (err) => {
+            console.error('[fetch-image] Erro:', err.message);
+            if (!res.headersSent) res.status(500).json({ error: err.message });
+        });
+
+        request.setTimeout(120000, () => {
+            request.destroy();
+            if (!res.headersSent) res.status(504).json({ error: 'Timeout ao baixar imagem' });
+        });
+    }
+
+    fetchWithRedirects(url, 5);
+});
+
 // ─── Start Server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
     console.log(`\n╔══════════════════════════════════════╗`);
@@ -691,5 +751,6 @@ app.listen(PORT, () => {
     console.log(`║  http://localhost:${PORT}               ║`);
     console.log(`╚══════════════════════════════════════╝`);
     console.log(`\n  GET /health`);
-    console.log(`  GET /extract?url=https://example.com\n`);
+    console.log(`  GET /extract?url=https://example.com`);
+    console.log(`  GET /fetch-image?url=https://cdn.example.com/img.jpg\n`);
 });

@@ -24,16 +24,15 @@
 import { generatePrompt } from './promptGeneratorService.js';
 import { generateContent, extractImageBlocks, replaceImageBlocksWithPlaceholders } from './contentGeneratorService.js';
 import { generateImages } from './imageGeneratorService.js';
-import { buildDocx, generatePdf } from './docxExportService.js';
+import { buildDocx } from './docxExportService.js';
 
 const STEPS = [
     { n: 1, label: 'Gerando prompt otimizado',        pct: 10 },
     { n: 2, label: 'Claude gerando conteúdo',          pct: 35 },
     { n: 3, label: 'Extraindo blocos de imagem',       pct: 45 },
-    { n: 4, label: 'Gerando imagens com FLUX',         pct: 70 },
-    { n: 5, label: 'Montando imagens',                 pct: 75 },
-    { n: 6, label: 'Construindo documento DOCX',       pct: 88 },
-    { n: 7, label: 'Gerando PDF',                      pct: 100 },
+    { n: 4, label: 'Gerando imagens com FLUX',         pct: 75 },
+    { n: 5, label: 'Montando imagens',                 pct: 88 },
+    { n: 6, label: 'Construindo documento DOCX',       pct: 100 },
 ];
 
 /**
@@ -76,6 +75,10 @@ export async function runProductionWorkflow(item, result, onProgress, signal) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     const imageBlocks = isEbookImagens ? extractImageBlocks(rawMarkdown) : [];
+    console.log(`[ProductionWorkflow] Tipo: ${ctx.tipo}, isEbookImagens: ${isEbookImagens}, blocos de imagem encontrados: ${imageBlocks.length}`);
+    if (imageBlocks.length > 0) {
+        console.log('[ProductionWorkflow] imageBlocks:', imageBlocks.map(b => ({ index: b.index, aspect: b.aspect, prompt: b.prompt.slice(0, 60) })));
+    }
 
     // Substituir blocos por placeholders no markdown final
     const processedMarkdown = imageBlocks.length > 0
@@ -91,7 +94,7 @@ export async function runProductionWorkflow(item, result, onProgress, signal) {
         imageResults = await generateImages(
             imageBlocks,
             signal,
-            ({ done, total }) => {
+            ({ done, total, index, arrayBuffer, imageType, error }) => {
                 const stepPct = STEPS[3].pct;
                 const prevPct = STEPS[2].pct;
                 const progressPct = prevPct + Math.round(((done / total) * (stepPct - prevPct)));
@@ -100,6 +103,9 @@ export async function runProductionWorkflow(item, result, onProgress, signal) {
                     label: `Gerando imagem ${done}/${total}...`,
                     pct: progressPct,
                     detail: `Imagem ${done} de ${total} concluída`,
+                    // dados da imagem recém-gerada para preview em tempo real
+                    imageReady: { index, arrayBuffer, imageType, error },
+                    totalImages: total,
                 });
             }
         );
@@ -111,7 +117,7 @@ export async function runProductionWorkflow(item, result, onProgress, signal) {
     report(5, 'Processando imagens...');
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    // imageMap: Map<index, { arrayBuffer, url, prompt }>
+    // imageMap: Map<index, { arrayBuffer, url, prompt, imageType, aspect }>
     const imageMap = new Map();
     for (const ir of imageResults) {
         const block = imageBlocks.find(b => b.index === ir.index);
@@ -119,7 +125,10 @@ export async function runProductionWorkflow(item, result, onProgress, signal) {
             arrayBuffer: ir.arrayBuffer,
             url: ir.url,
             prompt: block?.prompt || '',
+            imageType: ir.imageType || 'jpg',
+            aspect: block?.aspect || '16:9',
         });
+        console.log(`[ProductionWorkflow] imageMap[${ir.index}]: url=${ir.url ? '✓' : '✗'}, arrayBuffer=${ir.arrayBuffer ? `${ir.arrayBuffer.byteLength} bytes` : 'null'}, erro=${ir.error || 'nenhum'}`);
     }
 
     // ── Step 6: Construir DOCX ────────────────────────────────────────────────
@@ -132,23 +141,10 @@ export async function runProductionWorkflow(item, result, onProgress, signal) {
         : result.produto?.subtitulo || '';
     const docxBlob = await buildDocx(processedMarkdown, imageMap, ctx.nome, subtitle);
 
-    // ── Step 7: Gerar PDF ─────────────────────────────────────────────────────
-    report(7, 'Gerando PDF...');
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-
-    let pdfBlob = null;
-    try {
-        pdfBlob = await generatePdf(processedMarkdown, imageMap, ctx.nome);
-    } catch (pdfErr) {
-        console.warn('[ProductionWorkflow] Falha ao gerar PDF:', pdfErr.message);
-        // PDF opcional — se falhar, DOCX ainda está disponível
-    }
-
     const filename = sanitizeFilename(ctx.nome);
 
     return {
         docxBlob,
-        pdfBlob,
         filename,
         markdown: processedMarkdown,
         imageBlocks,
