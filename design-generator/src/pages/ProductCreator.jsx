@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchLandingPages, fetchLandingPage } from '../services/landingPagesService';
 import { fetchOrderBumpsByLp } from '../services/orderBumpsService';
 import { runEstruturador } from '../services/estruturadorService';
+import { getCachedAnalysis, saveAnalysis } from '../services/analysisCacheService';
+import { getDeliverableCache, makeDeliverableKey, downloadFromCache } from '../services/deliverableCacheService';
+import useBackgroundWorkflows from '../hooks/useBackgroundWorkflows.js';
 import WorkflowModal from './WorkflowModal.jsx';
 
 // ─── Design Tokens ─────────────────────────────────────────────────────────────
@@ -67,8 +70,21 @@ export default function ProductCreator() {
     const [activeTab, setActiveTab] = useState('overview');
     const [expandedModule, setExpandedModule] = useState(null);
 
-    // Workflow de produção
-    const [workflowItem, setWorkflowItem] = useState(null);
+    // Cache de análise
+    const [analysisFromCache, setAnalysisFromCache] = useState(null); // { date } | null
+
+    // Cache de entregáveis
+    const [deliverableCache, setDeliverableCache] = useState(new Map());
+
+    // Atualiza cache local após gerar um entregável
+    const handleDeliverableGenerated = useCallback((key, entry) => {
+        setDeliverableCache(prev => new Map([...prev, [key, entry]]));
+    }, []);
+
+    // Background workflow system — supports multiple concurrent jobs
+    const { jobs, startJob, cancelJob, removeJob, activeCount } = useBackgroundWorkflows(handleDeliverableGenerated);
+    const [selectedJobId, setSelectedJobId] = useState(null);
+    const selectedJob = selectedJobId ? jobs.get(selectedJobId) : null;
 
     useEffect(() => {
         fetchLandingPages()
@@ -76,6 +92,14 @@ export default function ProductCreator() {
             .catch(err => console.error('Failed to load LPs:', err))
             .finally(() => setLpsLoading(false));
     }, []);
+
+    // Carrega o cache de entregáveis ao chegar no step 3 com uma LP selecionada
+    useEffect(() => {
+        if (step !== 3 || inputMode !== 'gallery' || !selectedLp?.id) return;
+        getDeliverableCache(selectedLp.id)
+            .then(setDeliverableCache)
+            .catch(() => { });
+    }, [step, selectedLp?.id, inputMode]);
 
     const filteredLps = search.trim()
         ? lps.filter(lp =>
@@ -85,12 +109,29 @@ export default function ProductCreator() {
 
     const canGoToStep2 = selectedLp || (inputMode === 'manual' && manualHtml.trim().length > 100);
 
-    const handleAnalyze = async () => {
+    const handleAnalyze = async ({ forceRefresh = false } = {}) => {
         setStep(3);
-        setAnalyzing(true);
         setError('');
         setResult(null);
         setActiveTab('overview');
+
+        // Checar cache (só em modo gallery com LP selecionada)
+        if (!forceRefresh && inputMode === 'gallery' && selectedLp?.id) {
+            try {
+                const cached = await getCachedAnalysis(selectedLp.id);
+                if (cached) {
+                    setResult(cached.result);
+                    setAnalysisFromCache({ date: cached.updated_at });
+                    setAnalyzing(false);
+                    return;
+                }
+            } catch {
+                // Se o cache falhar, continua e chama a API normalmente
+            }
+        }
+
+        setAnalysisFromCache(null);
+        setAnalyzing(true);
 
         try {
             let html;
@@ -102,6 +143,13 @@ export default function ProductCreator() {
             }
             const data = await runEstruturador(html, orderBumps, setProgress);
             setResult(data);
+
+            // Salvar no cache (só em modo gallery com LP selecionada)
+            if (inputMode === 'gallery' && selectedLp?.id) {
+                saveAnalysis(selectedLp.id, data).catch(err =>
+                    console.warn('[ProductCreator] Falha ao salvar cache de análise:', err)
+                );
+            }
         } catch (err) {
             setError(err.message);
         } finally {
@@ -119,6 +167,8 @@ export default function ProductCreator() {
         setManualHtml('');
         setSearch('');
         setProgress(null);
+        setAnalysisFromCache(null);
+        setDeliverableCache(new Map());
     };
 
     return (
@@ -251,24 +301,42 @@ export default function ProductCreator() {
                     onTabChange={setActiveTab}
                     expandedModule={expandedModule}
                     onExpandModule={setExpandedModule}
-                    onBack={() => { setStep(2); setResult(null); setError(''); }}
+                    onBack={() => { setStep(2); setResult(null); setError(''); setAnalysisFromCache(null); }}
                     onReset={handleReset}
+                    lpId={inputMode === 'gallery' ? selectedLp?.id : null}
+                    analysisFromCache={analysisFromCache}
+                    onRefreshAnalysis={() => handleAnalyze({ forceRefresh: true })}
+                    deliverableCache={deliverableCache}
+                    jobs={jobs}
                     onCreateItem={(item) => {
-                        console.log('[ProductCreator] onCreateItem invoked! Setting workflowItem:', item);
-                        setWorkflowItem(item);
+                        console.log('[ProductCreator] onCreateItem invoked! Starting background job:', item);
+                        const deliverableKey = makeDeliverableKey(item);
+                        const fullItem = {
+                            ...item,
+                            lpId: inputMode === 'gallery' ? selectedLp?.id || null : null,
+                            deliverableKey,
+                        };
+                        const jobId = startJob(fullItem, result);
+                        setSelectedJobId(jobId);
                     }}
                 />
             )}
 
-            {/* Modal de produção de entregável */}
-            {workflowItem && result && (
+            {/* Modal de produção de entregável (shows selected job) */}
+            {selectedJob && (
                 <WorkflowModal
-                    item={workflowItem}
-                    result={result}
-                    onClose={() => {
-                        console.log('[ProductCreator] WorkflowModal onClose');
-                        setWorkflowItem(null);
-                    }}
+                    job={selectedJob}
+                    onClose={() => setSelectedJobId(null)}
+                    onCancel={() => { cancelJob(selectedJobId); setSelectedJobId(null); }}
+                />
+            )}
+
+            {/* Background Jobs Panel — shows all running/completed jobs */}
+            {jobs.size > 0 && !selectedJobId && (
+                <BackgroundJobsPanel
+                    jobs={jobs}
+                    onSelect={setSelectedJobId}
+                    onRemove={removeJob}
                 />
             )}
         </div>
@@ -775,7 +843,7 @@ function StepConfigure({ selectedLp, inputMode, hasOrderBump, onHasOrderBumpChan
 }
 
 // ─── Step 3: Dashboard ─────────────────────────────────────────────────────────
-function StepDashboard({ analyzing, progress, result, error, activeTab, onTabChange, expandedModule, onExpandModule, onBack, onReset, onCreateItem }) {
+function StepDashboard({ analyzing, progress, result, error, activeTab, onTabChange, expandedModule, onExpandModule, onBack, onReset, onCreateItem, lpId, analysisFromCache, onRefreshAnalysis, deliverableCache, jobs }) {
     console.log('[StepDashboard] Render. onCreateItem is type: ', typeof onCreateItem);
     if (error) {
         return (
@@ -812,6 +880,31 @@ function StepDashboard({ analyzing, progress, result, error, activeTab, onTabCha
 
     return (
         <div style={{ animation: 'pc-fadein 0.3s ease' }}>
+            {/* Banner: análise carregada do cache */}
+            {analysisFromCache && (
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    background: 'rgba(96,165,250,0.07)', border: '1px solid rgba(96,165,250,0.2)',
+                    borderRadius: 10, padding: '0.6rem 1rem', marginBottom: '1.25rem',
+                    gap: '0.75rem', flexWrap: 'wrap',
+                }}>
+                    <span style={{ color: '#60A5FA', fontSize: '12px', fontFamily: 'DM Sans' }}>
+                        📂 Análise de {new Date(analysisFromCache.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })} carregada do cache
+                    </span>
+                    <button
+                        onClick={onRefreshAnalysis}
+                        style={{
+                            padding: '0.3rem 0.75rem', background: 'transparent',
+                            border: '1px solid rgba(96,165,250,0.4)', borderRadius: 6,
+                            color: '#60A5FA', fontFamily: 'DM Sans', fontSize: '11px',
+                            fontWeight: 600, cursor: 'pointer',
+                        }}
+                    >
+                        ↺ Refazer
+                    </button>
+                </div>
+            )}
+
             {/* Result header */}
             <div style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
@@ -908,7 +1001,7 @@ function StepDashboard({ analyzing, progress, result, error, activeTab, onTabCha
                 {activeTab === 'overview' && <OverviewTab result={result} />}
                 {activeTab === 'modulos' && <ModulosTab result={result} expandedModule={expandedModule} onExpandModule={onExpandModule} />}
                 {activeTab === 'bonus' && <BonusTab result={result} />}
-                {activeTab === 'plano' && <PlanoTab result={result} onCreateItem={onCreateItem} />}
+                {activeTab === 'plano' && <PlanoTab result={result} onCreateItem={onCreateItem} lpId={lpId} deliverableCache={deliverableCache} jobs={jobs} />}
             </div>
         </div>
     );
@@ -1245,7 +1338,15 @@ function BonusTab({ result }) {
 // ─── Tab: Plano de Produção ────────────────────────────────────────────────────
 const EBOOK_TYPES = new Set(['ebook_simples', 'ebook_imagens']);
 
-function PlanoTab({ result, onCreateItem }) {
+function PlanoTab({ result, onCreateItem, lpId, deliverableCache, jobs }) {
+    // Helper: find a running job that matches a given item name
+    const findJobForItem = (itemNome) => {
+        if (!jobs || jobs.size === 0) return null;
+        for (const [, job] of jobs) {
+            if (job.item?.nome === itemNome && job.phase === 'running') return job;
+        }
+        return null;
+    };
     const produto = result.produto || {};
     const bonus = result.bonus || [];
     const orderBumps = result.orderBumps || [];
@@ -1265,80 +1366,107 @@ function PlanoTab({ result, onCreateItem }) {
             {/* ── Produto Principal — Módulos ── */}
             {modulos.length > 0 && (
                 <PlanoSection title="PRODUTO PRINCIPAL" color={C.accent}>
-                    {modulos.map((mod, i) => (
-                        <DeliverableRow
-                            key={i}
-                            numero={mod.numero ?? i + 1}
-                            nome={mod.nome}
-                            tipo={produtoTipo}
-                            meta={mod.paginasEstimadas ? `~${mod.paginasEstimadas}pg` : null}
-                            topicos={mod.topicos}
-                            onCriar={() => {
-                                console.log('[PlanoTab] Calling onCreateItem for module: ', mod.nome);
-                                onCreateItem?.({
-                                    _type: 'module',
-                                    numero: mod.numero ?? i + 1,
-                                    nome: mod.nome,
-                                    topicos: mod.topicos || [],
-                                    paginas: mod.paginasEstimadas,
-                                    tipo: produtoTipo,
-                                    productNome: produto.nome,
-                                    publicoAlvo: produto.publicoAlvo,
-                                });
-                            }}
-                        />
-                    ))}
+                    {modulos.map((mod, i) => {
+                        const key = `module_${mod.numero ?? i + 1}`;
+                        return (
+                            <DeliverableRow
+                                key={i}
+                                numero={mod.numero ?? i + 1}
+                                nome={mod.nome}
+                                tipo={produtoTipo}
+                                meta={mod.paginasEstimadas ? `~${mod.paginasEstimadas}pg` : null}
+                                topicos={mod.topicos}
+                                cachedEntry={deliverableCache?.get(key) || null}
+                                runningJob={findJobForItem(mod.nome)}
+                                onCriar={() => {
+                                    console.log('[PlanoTab] Calling onCreateItem for module: ', mod.nome);
+                                    onCreateItem?.({
+                                        _type: 'module',
+                                        numero: mod.numero ?? i + 1,
+                                        nome: mod.nome,
+                                        topicos: mod.topicos || [],
+                                        paginas: mod.paginasEstimadas,
+                                        tipo: produtoTipo,
+                                        productNome: produto.nome,
+                                        publicoAlvo: produto.publicoAlvo,
+                                    });
+                                }}
+                            />
+                        );
+                    })}
                 </PlanoSection>
             )}
 
             {/* ── Bônus ── */}
             {bonus.length > 0 && (
                 <PlanoSection title="BÔNUS" color={C.success}>
-                    {bonus.map((b, i) => (
-                        <DeliverableRow
-                            key={i}
-                            numero={null}
-                            nome={b.nome}
-                            tipo={b.tipo}
-                            meta={b.paginasEstimadas ? `~${b.paginasEstimadas}pg` : null}
-                            badge={b.isSuper ? '⭐ SUPER' : null}
-                            badgeColor={b.isSuper ? C.accent : null}
-                            topicos={null}
-                            onCriar={EBOOK_TYPES.has(b.tipo) ? () => onCreateItem?.({
-                                _type: 'bonus',
-                                nome: b.nome,
-                                descricao: b.descricao,
-                                tipo: b.tipo,
-                                paginas: b.paginasEstimadas,
-                                publicoAlvo: produto.publicoAlvo,
-                                isSuper: b.isSuper,
-                            }) : null}
-                        />
-                    ))}
+                    {bonus.map((b, i) => {
+                        const sanitized = (b.nome || '')
+                            .toLowerCase()
+                            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                            .replace(/[^a-z0-9]+/g, '_')
+                            .replace(/^_+|_+$/g, '')
+                            .slice(0, 40);
+                        const key = `bonus_${sanitized}`;
+                        return (
+                            <DeliverableRow
+                                key={i}
+                                numero={null}
+                                nome={b.nome}
+                                tipo={b.tipo}
+                                meta={b.paginasEstimadas ? `~${b.paginasEstimadas}pg` : null}
+                                badge={b.isSuper ? '⭐ SUPER' : null}
+                                badgeColor={b.isSuper ? C.accent : null}
+                                topicos={null}
+                                cachedEntry={deliverableCache?.get(key) || null}
+                                runningJob={findJobForItem(b.nome)}
+                                onCriar={EBOOK_TYPES.has(b.tipo) ? () => onCreateItem?.({
+                                    _type: 'bonus',
+                                    nome: b.nome,
+                                    descricao: b.descricao,
+                                    tipo: b.tipo,
+                                    paginas: b.paginasEstimadas,
+                                    publicoAlvo: produto.publicoAlvo,
+                                    isSuper: b.isSuper,
+                                }) : null}
+                            />
+                        );
+                    })}
                 </PlanoSection>
             )}
 
             {/* ── Order Bumps ── */}
             {orderBumps.length > 0 && (
                 <PlanoSection title="ORDER BUMPS" color="#60A5FA">
-                    {orderBumps.map((ob, i) => (
-                        <DeliverableRow
-                            key={i}
-                            numero={null}
-                            nome={ob.nome}
-                            tipo={ob.tipo}
-                            meta={ob.preco ? `R$${ob.preco}` : null}
-                            topicos={null}
-                            onCriar={EBOOK_TYPES.has(ob.tipo) ? () => onCreateItem?.({
-                                _type: 'bonus',
-                                nome: ob.nome,
-                                descricao: ob.descricao,
-                                tipo: ob.tipo || 'ebook_simples',
-                                paginas: 30,
-                                publicoAlvo: produto.publicoAlvo,
-                            }) : null}
-                        />
-                    ))}
+                    {orderBumps.map((ob, i) => {
+                        const sanitized = (ob.nome || '')
+                            .toLowerCase()
+                            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                            .replace(/[^a-z0-9]+/g, '_')
+                            .replace(/^_+|_+$/g, '')
+                            .slice(0, 40);
+                        const key = `bonus_${sanitized}`;
+                        return (
+                            <DeliverableRow
+                                key={i}
+                                numero={null}
+                                nome={ob.nome}
+                                tipo={ob.tipo}
+                                meta={ob.preco ? `R$${ob.preco}` : null}
+                                topicos={null}
+                                cachedEntry={deliverableCache?.get(key) || null}
+                                runningJob={findJobForItem(ob.nome)}
+                                onCriar={EBOOK_TYPES.has(ob.tipo) ? () => onCreateItem?.({
+                                    _type: 'bonus',
+                                    nome: ob.nome,
+                                    descricao: ob.descricao,
+                                    tipo: ob.tipo || 'ebook_simples',
+                                    paginas: 30,
+                                    publicoAlvo: produto.publicoAlvo,
+                                }) : null}
+                            />
+                        );
+                    })}
                 </PlanoSection>
             )}
         </div>
@@ -1361,16 +1489,34 @@ function PlanoSection({ title, color, children }) {
     );
 }
 
-function DeliverableRow({ numero, nome, tipo, meta, badge, badgeColor, topicos, onCriar }) {
+function DeliverableRow({ numero, nome, tipo, meta, badge, badgeColor, topicos, onCriar, cachedEntry, runningJob }) {
     const [open, setOpen] = useState(false);
+    const [downloading, setDownloading] = useState(null); // 'docx' | 'pdf' | null
     const tipoConfig = TIPO_CONFIG[tipo] || TIPO_CONFIG.ebook_simples;
     const canCreate = !!onCriar;
+    const isCached = !!cachedEntry;
+    const isProducing = !!runningJob;
+
+    const handleDownload = async (pathKey, ext) => {
+        if (!cachedEntry?.[pathKey]) return;
+        setDownloading(ext);
+        try {
+            const nameSanitized = (nome || 'entregavel').replace(/[^a-zA-Z0-9À-ÿ\s]/g, '').trim();
+            await downloadFromCache(cachedEntry[pathKey], `${nameSanitized}.${ext}`);
+        } catch (err) {
+            console.error('[DeliverableRow] Erro ao baixar do cache:', err);
+        } finally {
+            setDownloading(null);
+        }
+    };
 
     return (
         <div style={{
-            background: C.surface, border: `1px solid ${C.border}`,
+            background: C.surface,
+            border: `1px solid ${isProducing ? 'rgba(201,169,98,0.35)' : isCached ? 'rgba(74,222,128,0.2)' : C.border}`,
             borderRadius: 10, overflow: 'hidden',
             transition: 'border-color 0.2s',
+            boxShadow: isProducing ? '0 0 12px rgba(201,169,98,0.08)' : 'none',
         }}>
             <div style={{
                 padding: '0.85rem 1.1rem',
@@ -1380,11 +1526,12 @@ function DeliverableRow({ numero, nome, tipo, meta, badge, badgeColor, topicos, 
                 {numero != null && (
                     <div style={{
                         width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-                        background: 'rgba(201,169,98,0.12)', border: '1px solid rgba(201,169,98,0.25)',
+                        background: isCached ? 'rgba(74,222,128,0.12)' : 'rgba(201,169,98,0.12)',
+                        border: `1px solid ${isCached ? 'rgba(74,222,128,0.25)' : 'rgba(201,169,98,0.25)'}`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: C.accent, fontSize: '11px', fontFamily: 'DM Sans', fontWeight: 700,
+                        color: isCached ? C.success : C.accent, fontSize: '11px', fontFamily: 'DM Sans', fontWeight: 700,
                     }}>
-                        {numero}
+                        {isCached ? '✓' : numero}
                     </div>
                 )}
 
@@ -1408,18 +1555,30 @@ function DeliverableRow({ numero, nome, tipo, meta, badge, badgeColor, topicos, 
                     </div>
                 </div>
 
-                {/* Meta info + tipo + botão */}
+                {/* Meta info + tipo/cache badge + botões */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-                    {/* Tipo badge */}
-                    <span style={{
-                        padding: '0.15rem 0.5rem', borderRadius: 6, fontSize: '10px',
-                        fontFamily: 'DM Sans', fontWeight: 500,
-                        background: `${tipoConfig.color}15`,
-                        border: `1px solid ${tipoConfig.color}30`,
-                        color: tipoConfig.color,
-                    }}>
-                        {tipoConfig.icon} {tipoConfig.label}
-                    </span>
+                    {/* Badge: gerado em cache OR tipo */}
+                    {isCached ? (
+                        <span style={{
+                            padding: '0.15rem 0.5rem', borderRadius: 6, fontSize: '10px',
+                            fontFamily: 'DM Sans', fontWeight: 500,
+                            background: 'rgba(74,222,128,0.1)',
+                            border: '1px solid rgba(74,222,128,0.25)',
+                            color: C.success, whiteSpace: 'nowrap',
+                        }}>
+                            ✓ Gerado em {new Date(cachedEntry.generated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                        </span>
+                    ) : (
+                        <span style={{
+                            padding: '0.15rem 0.5rem', borderRadius: 6, fontSize: '10px',
+                            fontFamily: 'DM Sans', fontWeight: 500,
+                            background: `${tipoConfig.color}15`,
+                            border: `1px solid ${tipoConfig.color}30`,
+                            color: tipoConfig.color,
+                        }}>
+                            {tipoConfig.icon} {tipoConfig.label}
+                        </span>
+                    )}
 
                     {/* Meta (páginas, preço) */}
                     {meta && (
@@ -1445,26 +1604,68 @@ function DeliverableRow({ numero, nome, tipo, meta, badge, badgeColor, topicos, 
                         </button>
                     )}
 
-                    {/* ✦ Criar */}
-                    <button
-                        onClick={(e) => {
-                            console.log('[DeliverableRow] Clicked Criar: ', nome, canCreate);
-                            if (canCreate) onCriar(e);
-                        }}
-                        disabled={!canCreate}
-                        title={canCreate ? `Gerar DOCX + PDF de "${nome}"` : 'Tipo ainda não suportado — em breve'}
-                        style={{
-                            padding: '0.3rem 0.85rem', borderRadius: 6,
-                            border: canCreate ? '1px solid rgba(201,169,98,0.5)' : `1px solid ${C.border}`,
-                            background: canCreate ? 'rgba(201,169,98,0.1)' : C.surface2,
-                            color: canCreate ? C.accent : C.textMuted,
-                            fontFamily: 'DM Sans', fontSize: '11px', fontWeight: 600,
-                            cursor: canCreate ? 'pointer' : 'not-allowed',
-                            transition: 'all 0.2s ease', whiteSpace: 'nowrap',
-                        }}
-                    >
-                        ✦ Criar
-                    </button>
+                    {/* Botões de download do cache */}
+                    {isCached && (
+                        <>
+                            {cachedEntry.docx_path && (
+                                <button
+                                    onClick={() => handleDownload('docx_path', 'docx')}
+                                    disabled={downloading === 'docx'}
+                                    title="Baixar DOCX gerado"
+                                    style={{
+                                        padding: '0.3rem 0.6rem', borderRadius: 6,
+                                        border: '1px solid rgba(201,169,98,0.4)',
+                                        background: 'rgba(201,169,98,0.08)',
+                                        color: C.accent, fontFamily: 'DM Sans', fontSize: '11px',
+                                        fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                                    }}
+                                >
+                                    {downloading === 'docx' ? '...' : '⬇ DOCX'}
+                                </button>
+                            )}
+                        </>
+                    )}
+
+                    {/* ✦ Criar / ↺ Regenerar / ⏳ Produzindo */}
+                    {isProducing ? (
+                        <span
+                            title={`Produzindo "${nome}" — ${runningJob.overallPct || 0}%`}
+                            style={{
+                                padding: '0.3rem 0.85rem', borderRadius: 6,
+                                border: '1px solid rgba(201,169,98,0.45)',
+                                background: 'rgba(201,169,98,0.15)',
+                                color: C.accent,
+                                fontFamily: 'DM Sans', fontSize: '11px', fontWeight: 600,
+                                whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                                animation: 'pc-pulse 2s ease infinite',
+                            }}
+                        >
+                            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', border: '2px solid rgba(201,169,98,0.25)', borderTopColor: C.accent, animation: 'pc-spin 0.8s linear infinite' }} />
+                            Produzindo… {runningJob.overallPct > 0 ? `${runningJob.overallPct}%` : ''}
+                        </span>
+                    ) : (
+                        <button
+                            onClick={(e) => {
+                                console.log('[DeliverableRow] Clicked Criar/Regenerar: ', nome, canCreate);
+                                if (canCreate) onCriar(e);
+                            }}
+                            disabled={!canCreate}
+                            title={canCreate
+                                ? isCached ? `Regenerar "${nome}"` : `Gerar DOCX de "${nome}"`
+                                : 'Tipo ainda não suportado — em breve'}
+                            style={{
+                                padding: '0.3rem 0.85rem', borderRadius: 6,
+                                border: canCreate ? '1px solid rgba(201,169,98,0.5)' : `1px solid ${C.border}`,
+                                background: canCreate ? 'rgba(201,169,98,0.1)' : C.surface2,
+                                color: canCreate ? C.accent : C.textMuted,
+                                fontFamily: 'DM Sans', fontSize: '11px', fontWeight: 600,
+                                cursor: canCreate ? 'pointer' : 'not-allowed',
+                                transition: 'all 0.2s ease', whiteSpace: 'nowrap',
+                            }}
+                        >
+                            {isCached ? '↺ Regenerar' : '✦ Criar'}
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -1583,6 +1784,164 @@ function EmptyState({ icon, title, desc }) {
                 {title}
             </h3>
             <p style={{ color: C.textSec, fontFamily: 'DM Sans', fontSize: '13px', margin: 0 }}>{desc}</p>
+        </div>
+    );
+}
+
+// ─── Background Jobs Panel ─────────────────────────────────────────────────────
+function BackgroundJobsPanel({ jobs, onSelect, onRemove }) {
+    const jobList = [...jobs.values()].sort((a, b) => b.startedAt - a.startedAt);
+    const runningCount = jobList.filter(j => j.phase === 'running').length;
+    const doneCount = jobList.filter(j => j.phase === 'done').length;
+
+    return (
+        <div style={{
+            position: 'fixed', bottom: 0, right: 0, left: 'var(--sidebar-width, 260px)',
+            zIndex: 999, padding: '0 1.5rem 1rem',
+            pointerEvents: 'none',
+        }}>
+            <div style={{
+                pointerEvents: 'auto',
+                background: C.surface, border: `1px solid ${C.border}`,
+                borderRadius: '16px 16px 0 0', padding: '0.8rem 1rem',
+                boxShadow: '0 -8px 32px rgba(0,0,0,0.5)',
+                maxWidth: 900, marginLeft: 'auto', marginRight: 'auto',
+            }}>
+                <style>{`
+                    @keyframes bjp-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+                    @keyframes bjp-progress { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+                `}</style>
+
+                {/* Header */}
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    marginBottom: '0.6rem',
+                }}>
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        fontFamily: 'DM Sans', fontSize: '11px', fontWeight: 600,
+                        letterSpacing: '0.08em', textTransform: 'uppercase',
+                    }}>
+                        <span style={{ color: C.accent }}>📦 Processos</span>
+                        {runningCount > 0 && (
+                            <span style={{
+                                background: 'rgba(201,169,98,0.15)', color: C.accent,
+                                padding: '2px 8px', borderRadius: 6, fontSize: '10px',
+                                animation: 'bjp-pulse 2s infinite',
+                            }}>
+                                {runningCount} em andamento
+                            </span>
+                        )}
+                        {doneCount > 0 && (
+                            <span style={{
+                                background: 'rgba(74,222,128,0.12)', color: C.success,
+                                padding: '2px 8px', borderRadius: 6, fontSize: '10px',
+                            }}>
+                                {doneCount} concluído{doneCount > 1 ? 's' : ''}
+                            </span>
+                        )}
+                    </div>
+                </div>
+
+                {/* Job Cards */}
+                <div style={{
+                    display: 'flex', gap: '0.5rem', overflowX: 'auto',
+                    paddingBottom: '0.25rem',
+                }}>
+                    {jobList.map(job => {
+                        const isRunning = job.phase === 'running';
+                        const isDone = job.phase === 'done';
+                        const isError = job.phase === 'error';
+
+                        return (
+                            <div
+                                key={job.id}
+                                onClick={() => onSelect(job.id)}
+                                style={{
+                                    flexShrink: 0,
+                                    background: isRunning
+                                        ? 'rgba(201,169,98,0.06)'
+                                        : isDone
+                                            ? 'rgba(74,222,128,0.06)'
+                                            : 'rgba(248,113,113,0.06)',
+                                    border: `1px solid ${isRunning
+                                        ? 'rgba(201,169,98,0.2)'
+                                        : isDone
+                                            ? 'rgba(74,222,128,0.2)'
+                                            : 'rgba(248,113,113,0.2)'}`,
+                                    borderRadius: 10, padding: '0.5rem 0.75rem',
+                                    cursor: 'pointer', minWidth: 160, maxWidth: 220,
+                                    position: 'relative',
+                                    transition: 'all 0.2s ease',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
+                            >
+                                {/* Remove button for done/error jobs */}
+                                {!isRunning && (
+                                    <button
+                                        onClick={e => { e.stopPropagation(); onRemove(job.id); }}
+                                        style={{
+                                            position: 'absolute', top: 4, right: 4,
+                                            background: 'transparent', border: 'none',
+                                            color: C.textMuted, fontSize: '12px', cursor: 'pointer',
+                                            width: 18, height: 18, display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center',
+                                            borderRadius: 4, padding: 0,
+                                        }}
+                                    >
+                                        ×
+                                    </button>
+                                )}
+
+                                {/* Status icon + name */}
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                                    marginBottom: '0.3rem',
+                                }}>
+                                    <span style={{ fontSize: '12px' }}>
+                                        {isRunning ? '⏳' : isDone ? '✅' : '❌'}
+                                    </span>
+                                    <span style={{
+                                        fontFamily: 'DM Sans', fontSize: '11px', fontWeight: 600,
+                                        color: C.text, whiteSpace: 'nowrap', overflow: 'hidden',
+                                        textOverflow: 'ellipsis', maxWidth: 150,
+                                    }}>
+                                        {job.item.nome}
+                                    </span>
+                                </div>
+
+                                {/* Progress bar for running jobs */}
+                                {isRunning && (
+                                    <div style={{
+                                        height: 3, background: C.surface2, borderRadius: 2,
+                                        overflow: 'hidden',
+                                    }}>
+                                        <div style={{
+                                            height: '100%', borderRadius: 2,
+                                            background: `linear-gradient(90deg, ${C.accentDark}, ${C.accentLight})`,
+                                            width: `${job.overallPct}%`,
+                                            transition: 'width 0.5s ease',
+                                        }} />
+                                    </div>
+                                )}
+
+                                {/* Status detail */}
+                                <div style={{
+                                    fontFamily: 'DM Sans', fontSize: '9px',
+                                    color: isRunning ? C.textMuted : isDone ? C.success : C.error,
+                                    marginTop: '0.2rem',
+                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                }}>
+                                    {isRunning ? `${job.overallPct}% — ${job.stepDetail}` :
+                                        isDone ? 'Pronto para download' :
+                                            job.errorMsg?.slice(0, 40) || 'Erro'}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
         </div>
     );
 }

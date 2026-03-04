@@ -2,14 +2,16 @@
  * WorkflowModal.jsx
  *
  * Modal de progresso para o pipeline de produção de entregáveis.
- * Exibe os 7 steps com status, preview do markdown e botões de download.
+ * Exibe os steps, preview de imagens em tempo real e botão de download DOCX.
+ *
+ * REFACTORED: Now a pure display component. The workflow runs in the background
+ * (via useBackgroundWorkflows hook). Closing the modal does NOT cancel the workflow.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { runProductionWorkflow } from '../services/productionWorkflowService.js';
+import { useState } from 'react';
 import { downloadBlob } from '../services/docxExportService.js';
 
-// ─── Design Tokens (mesmo do ProductCreator) ───────────────────────────────────
+// ─── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
     bg: '#0C0C0E',
     surface: '#131316',
@@ -29,78 +31,37 @@ const C = {
 };
 
 const STEP_DEFS = [
-    { n: 1, label: 'Gerar Prompt',           icon: '📝', detail: 'Montando prompt otimizado para Claude...' },
-    { n: 2, label: 'Gerar Conteúdo',         icon: '🧠', detail: 'Claude escrevendo o conteúdo...' },
-    { n: 3, label: 'Extrair Imagens',        icon: '🔍', detail: 'Identificando blocos de imagem...' },
-    { n: 4, label: 'Gerar Imagens (FLUX)',   icon: '🖼️', detail: 'Gerando imagens com FLUX 1.1 Pro...' },
-    { n: 5, label: 'Processar Imagens',      icon: '⚙️', detail: 'Montando mapa de imagens...' },
-    { n: 6, label: 'Construir DOCX',         icon: '📄', detail: 'Montando documento Word...' },
-    { n: 7, label: 'Gerar PDF',              icon: '📑', detail: 'Gerando PDF multi-página...' },
+    { n: 1, label: 'Gerar Prompt', icon: '📝' },
+    { n: 2, label: 'Gerar Conteúdo', icon: '🧠' },
+    { n: 3, label: 'Extrair Imagens', icon: '🔍' },
+    { n: 4, label: 'Gerar Imagens (FLUX)', icon: '🖼️' },
+    { n: 5, label: 'Processar Imagens', icon: '⚙️' },
+    { n: 6, label: 'Construir DOCX', icon: '📄' },
 ];
 
 /**
- * @param {Object} props
- * @param {Object} props.item - Item do planoProducao
- * @param {Object} props.result - Resultado do estruturadorService
- * @param {Function} props.onClose
+ * @param {{ job: JobState, onClose: Function, onCancel: Function }} props
+ *
+ * job: { id, item, phase, currentStep, stepDetail, overallPct, liveImages, totalImages, output, errorMsg }
+ * onClose: hide modal (workflow continues)
+ * onCancel: abort workflow and close
  */
-export default function WorkflowModal({ item, result, onClose }) {
-    const [phase, setPhase] = useState('running'); // 'running' | 'done' | 'error'
-    const [currentStep, setCurrentStep] = useState(0);
-    const [stepDetail, setStepDetail] = useState('Iniciando...');
-    const [overallPct, setOverallPct] = useState(0);
-    const [errorMsg, setErrorMsg] = useState('');
-    const [output, setOutput] = useState(null); // { docxBlob, pdfBlob, filename, markdown }
+export default function WorkflowModal({ job, onClose, onCancel }) {
     const [showMarkdown, setShowMarkdown] = useState(false);
 
-    const abortRef = useRef(null);
+    if (!job) return null;
 
-    const handleProgress = useCallback(({ step, label, pct, detail }) => {
-        setCurrentStep(step);
-        setStepDetail(detail || label);
-        setOverallPct(pct);
-    }, []);
+    const { item, phase, currentStep, stepDetail, overallPct, liveImages, totalImages, output, errorMsg } = job;
 
-    useEffect(() => {
-        const controller = new AbortController();
-        abortRef.current = controller;
+    // Images to display
+    const displayImages = phase === 'done' && output?.imageResults?.length > 0
+        ? output.imageResults.map(ir => liveImages[ir.index] || { blobUrl: null, error: ir.error || 'Falhou' })
+        : liveImages;
+    const displayTotal = phase === 'done' && output?.imageResults?.length > 0
+        ? output.imageResults.length
+        : totalImages;
 
-        runProductionWorkflow(item, result, handleProgress, controller.signal)
-            .then(out => {
-                setOutput(out);
-                setOverallPct(100);
-                setCurrentStep(7);
-                setPhase('done');
-            })
-            .catch(err => {
-                if (err.name === 'AbortError') {
-                    onClose();
-                    return;
-                }
-                console.error('[WorkflowModal] Erro:', err);
-                setErrorMsg(err.message || 'Erro desconhecido');
-                setPhase('error');
-            });
-
-        return () => controller.abort();
-    }, [item, result, handleProgress, onClose]);
-
-    const handleCancel = () => {
-        abortRef.current?.abort();
-        onClose();
-    };
-
-    const handleDownloadDocx = () => {
-        if (output?.docxBlob) {
-            downloadBlob(output.docxBlob, `${output.filename}.docx`);
-        }
-    };
-
-    const handleDownloadPdf = () => {
-        if (output?.pdfBlob) {
-            downloadBlob(output.pdfBlob, `${output.filename}.pdf`);
-        }
-    };
+    const hasImageSection = displayTotal > 0 && (currentStep >= 4 || phase === 'done');
 
     return (
         <div
@@ -111,14 +72,15 @@ export default function WorkflowModal({ item, result, onClose }) {
                 padding: '1.5rem',
                 backdropFilter: 'blur(6px)',
             }}
-            onClick={e => e.target === e.currentTarget && phase === 'done' && onClose()}
+            onClick={e => e.target === e.currentTarget && onClose()}
         >
             <div style={{
                 background: C.surface, border: `1px solid ${C.border}`,
-                borderRadius: 20, width: '100%', maxWidth: 640,
+                borderRadius: 20, width: '100%', maxWidth: 680,
                 boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
                 overflow: 'hidden',
                 animation: 'wm-fadein 0.3s ease',
+                maxHeight: '90vh', overflowY: 'auto',
             }}>
                 <style>{`
                     @keyframes wm-fadein {
@@ -131,7 +93,11 @@ export default function WorkflowModal({ item, result, onClose }) {
                     }
                     @keyframes wm-pulse {
                         0%,100% { opacity: 1; }
-                        50% { opacity: 0.5; }
+                        50% { opacity: 0.4; }
+                    }
+                    @keyframes wm-shimmer {
+                        0%   { background-position: -200% 0; }
+                        100% { background-position:  200% 0; }
                     }
                 `}</style>
 
@@ -139,7 +105,8 @@ export default function WorkflowModal({ item, result, onClose }) {
                 <div style={{
                     padding: '1.25rem 1.5rem',
                     borderBottom: `1px solid ${C.border}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    position: 'sticky', top: 0, background: C.surface, zIndex: 1,
                 }}>
                     <div>
                         <div style={{ color: C.accent, fontSize: '10px', fontFamily: 'DM Sans', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
@@ -149,20 +116,19 @@ export default function WorkflowModal({ item, result, onClose }) {
                             {item.nome}
                         </h3>
                     </div>
-                    {phase !== 'running' && (
-                        <button
-                            onClick={onClose}
-                            style={{
-                                background: 'transparent', border: `1px solid ${C.border}`,
-                                color: C.textMuted, width: 32, height: 32, borderRadius: 8,
-                                cursor: 'pointer', fontSize: '16px', display: 'flex',
-                                alignItems: 'center', justifyContent: 'center',
-                                fontFamily: 'DM Sans',
-                            }}
-                        >
-                            ×
-                        </button>
-                    )}
+                    {/* Close button — always visible, just hides modal */}
+                    <button
+                        onClick={onClose}
+                        title={phase === 'running' ? 'Minimizar (continua em segundo plano)' : 'Fechar'}
+                        style={{
+                            background: 'transparent', border: `1px solid ${C.border}`,
+                            color: C.textMuted, width: 32, height: 32, borderRadius: 8,
+                            cursor: 'pointer', fontSize: '16px', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                        }}
+                    >
+                        {phase === 'running' ? '−' : '×'}
+                    </button>
                 </div>
 
                 {/* Barra de progresso */}
@@ -181,10 +147,10 @@ export default function WorkflowModal({ item, result, onClose }) {
                 <div style={{ padding: '1.25rem 1.5rem 0' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                         {STEP_DEFS.map(s => {
-                            const isDone   = currentStep > s.n || (phase === 'done');
+                            const isDone = currentStep > s.n || phase === 'done';
                             const isActive = currentStep === s.n && phase === 'running';
                             const isPending = currentStep < s.n && phase === 'running';
-                            const isError  = phase === 'error' && currentStep === s.n;
+                            const isError = phase === 'error' && currentStep === s.n;
 
                             return (
                                 <div key={s.n} style={{
@@ -194,24 +160,12 @@ export default function WorkflowModal({ item, result, onClose }) {
                                     border: `1px solid ${isActive ? 'rgba(201,169,98,0.2)' : 'transparent'}`,
                                     transition: 'all 0.3s ease',
                                 }}>
-                                    {/* Status icon */}
                                     <div style={{
                                         width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         fontSize: '12px',
-                                        background: isDone
-                                            ? 'rgba(74,222,128,0.15)'
-                                            : isActive
-                                                ? 'rgba(201,169,98,0.15)'
-                                                : isError
-                                                    ? 'rgba(248,113,113,0.15)'
-                                                    : C.surface2,
-                                        border: `1px solid ${
-                                            isDone ? 'rgba(74,222,128,0.4)'
-                                            : isActive ? 'rgba(201,169,98,0.4)'
-                                            : isError ? 'rgba(248,113,113,0.4)'
-                                            : C.border
-                                        }`,
+                                        background: isDone ? 'rgba(74,222,128,0.15)' : isActive ? 'rgba(201,169,98,0.15)' : isError ? 'rgba(248,113,113,0.15)' : C.surface2,
+                                        border: `1px solid ${isDone ? 'rgba(74,222,128,0.4)' : isActive ? 'rgba(201,169,98,0.4)' : isError ? 'rgba(248,113,113,0.4)' : C.border}`,
                                         color: isDone ? C.success : isActive ? C.accent : isError ? C.error : C.textMuted,
                                     }}>
                                         {isDone ? '✓' : isActive ? (
@@ -222,7 +176,6 @@ export default function WorkflowModal({ item, result, onClose }) {
                                         ) : s.n}
                                     </div>
 
-                                    {/* Label */}
                                     <div style={{ flex: 1 }}>
                                         <div style={{
                                             fontFamily: 'DM Sans', fontSize: '13px', fontWeight: isActive ? 600 : 400,
@@ -233,17 +186,16 @@ export default function WorkflowModal({ item, result, onClose }) {
                                         {isActive && stepDetail && (
                                             <div style={{
                                                 fontFamily: 'DM Sans', fontSize: '11px', color: C.textMuted,
-                                                marginTop: '0.15rem', animation: 'wm-pulse 2s infinite'
+                                                marginTop: '0.15rem', animation: 'wm-pulse 2s infinite',
                                             }}>
                                                 {stepDetail}
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* Step number (right) */}
                                     {!isDone && !isActive && (
                                         <span style={{ color: C.textMuted, fontSize: '10px', fontFamily: 'DM Sans' }}>
-                                            {s.n}/7
+                                            {s.n}/6
                                         </span>
                                     )}
                                 </div>
@@ -251,6 +203,90 @@ export default function WorkflowModal({ item, result, onClose }) {
                         })}
                     </div>
                 </div>
+
+                {/* ── Preview de Imagens em Tempo Real ─────────────────────────── */}
+                {hasImageSection && (
+                    <div style={{ padding: '1rem 1.5rem 0' }}>
+                        <div style={{
+                            fontSize: '10px', fontFamily: 'DM Sans', fontWeight: 600,
+                            letterSpacing: '0.1em', textTransform: 'uppercase',
+                            color: C.textMuted, marginBottom: '0.6rem',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        }}>
+                            <span>Imagens geradas</span>
+                            <span style={{ color: displayImages.filter(i => i?.blobUrl).length > 0 ? C.success : C.textMuted }}>
+                                {displayImages.filter(i => i?.blobUrl).length}/{displayTotal} ✓
+                            </span>
+                        </div>
+
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: `repeat(${Math.min(displayTotal, 4)}, 1fr)`,
+                            gap: '0.5rem',
+                        }}>
+                            {Array.from({ length: displayTotal }, (_, i) => {
+                                const img = displayImages[i];
+                                const isReady = !!img?.blobUrl;
+                                const isFailed = !!img?.error && !img?.blobUrl;
+                                const isPendingImg = !img;
+
+                                return (
+                                    <div key={i} style={{
+                                        aspectRatio: '16/9',
+                                        borderRadius: 8,
+                                        overflow: 'hidden',
+                                        position: 'relative',
+                                        border: `1px solid ${isFailed ? 'rgba(248,113,113,0.35)' : isReady ? 'rgba(74,222,128,0.35)' : C.border}`,
+                                        background: C.surface2,
+                                    }}>
+                                        {isReady && (
+                                            <img
+                                                src={img.blobUrl}
+                                                alt={`Imagem ${i + 1}`}
+                                                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                            />
+                                        )}
+                                        {isFailed && (
+                                            <div style={{
+                                                display: 'flex', flexDirection: 'column',
+                                                alignItems: 'center', justifyContent: 'center',
+                                                height: '100%', gap: '0.25rem',
+                                            }}>
+                                                <span style={{ fontSize: '18px' }}>✗</span>
+                                                <span style={{ fontSize: '9px', color: C.error, fontFamily: 'DM Sans', textAlign: 'center', padding: '0 4px' }}>
+                                                    {img.error?.slice(0, 40)}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {isPendingImg && (
+                                            <div style={{
+                                                width: '100%', height: '100%',
+                                                background: `linear-gradient(90deg, ${C.surface2} 25%, ${C.surface3} 50%, ${C.surface2} 75%)`,
+                                                backgroundSize: '200% 100%',
+                                                animation: 'wm-shimmer 1.5s infinite',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            }}>
+                                                <span style={{ fontSize: '9px', color: C.textMuted, fontFamily: 'DM Sans', animation: 'wm-pulse 2s infinite' }}>
+                                                    gerando...
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {/* Badge do número */}
+                                        <div style={{
+                                            position: 'absolute', bottom: 4, right: 4,
+                                            background: 'rgba(0,0,0,0.65)', borderRadius: 4,
+                                            padding: '1px 5px', fontSize: '9px',
+                                            color: 'rgba(255,255,255,0.8)', fontFamily: 'DM Sans',
+                                        }}>
+                                            #{i + 1}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* Estado: Erro */}
                 {phase === 'error' && (
@@ -269,17 +305,16 @@ export default function WorkflowModal({ item, result, onClose }) {
                     </div>
                 )}
 
-                {/* Estado: Concluído */}
+                {/* Estado: Concluído — preview do markdown */}
                 {phase === 'done' && output && (
-                    <div style={{ padding: '1.25rem 1.5rem' }}>
-                        {/* Preview do markdown */}
+                    <div style={{ padding: '1rem 1.5rem 0' }}>
                         <button
                             onClick={() => setShowMarkdown(v => !v)}
                             style={{
                                 width: '100%', background: C.surface2, border: `1px solid ${C.border}`,
                                 borderRadius: 8, padding: '0.6rem 1rem', cursor: 'pointer',
                                 color: C.textSec, fontFamily: 'DM Sans', fontSize: '12px',
-                                textAlign: 'left', marginBottom: '0.75rem',
+                                textAlign: 'left',
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                             }}
                         >
@@ -292,33 +327,14 @@ export default function WorkflowModal({ item, result, onClose }) {
                                 background: C.surface2, border: `1px solid ${C.border}`,
                                 borderRadius: 8, padding: '1rem',
                                 maxHeight: '180px', overflowY: 'auto',
-                                marginBottom: '0.75rem',
+                                marginTop: '0.5rem',
                                 fontFamily: 'monospace', fontSize: '11px',
                                 color: C.textSec, lineHeight: 1.6, whiteSpace: 'pre-wrap',
                             }}>
                                 {output.markdown?.slice(0, 2000)}
                                 {output.markdown?.length > 2000 && (
-                                    <span style={{ color: C.textMuted }}>\n... [{output.markdown.length - 2000} caracteres adicionais]</span>
+                                    <span style={{ color: C.textMuted }}>{'\n'}... [{output.markdown.length - 2000} caracteres adicionais]</span>
                                 )}
-                            </div>
-                        )}
-
-                        {/* Info sobre imagens */}
-                        {output.imageResults?.length > 0 && (
-                            <div style={{
-                                display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap'
-                            }}>
-                                {output.imageResults.map((ir, i) => (
-                                    <div key={i} style={{
-                                        padding: '0.25rem 0.6rem', borderRadius: 6, fontSize: '10px',
-                                        fontFamily: 'DM Sans',
-                                        background: ir.error ? 'rgba(248,113,113,0.1)' : 'rgba(74,222,128,0.1)',
-                                        border: `1px solid ${ir.error ? 'rgba(248,113,113,0.3)' : 'rgba(74,222,128,0.3)'}`,
-                                        color: ir.error ? C.error : C.success,
-                                    }}>
-                                        {ir.error ? `✗ Img ${i + 1}` : `✓ Img ${i + 1}`}
-                                    </div>
-                                ))}
                             </div>
                         )}
                     </div>
@@ -329,10 +345,41 @@ export default function WorkflowModal({ item, result, onClose }) {
                     padding: '1rem 1.5rem 1.5rem',
                     display: 'flex', gap: '0.75rem', justifyContent: 'flex-end',
                     borderTop: `1px solid ${C.border}`,
+                    marginTop: '1rem',
                 }}>
                     {phase === 'running' && (
+                        <>
+                            <button
+                                onClick={onCancel}
+                                style={{
+                                    padding: '0.7rem 1.25rem', background: 'transparent',
+                                    border: `1px solid rgba(248,113,113,0.35)`, borderRadius: 10,
+                                    color: C.error, fontFamily: 'DM Sans', fontSize: '13px',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                ✗ Cancelar
+                            </button>
+                            <button
+                                onClick={onClose}
+                                style={{
+                                    padding: '0.7rem 1.25rem',
+                                    background: 'rgba(201,169,98,0.1)',
+                                    border: `1px solid rgba(201,169,98,0.35)`,
+                                    borderRadius: 10, color: C.accent,
+                                    fontFamily: 'DM Sans', fontSize: '13px',
+                                    fontWeight: 600, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                                }}
+                            >
+                                − Minimizar
+                            </button>
+                        </>
+                    )}
+
+                    {phase === 'error' && (
                         <button
-                            onClick={handleCancel}
+                            onClick={onClose}
                             style={{
                                 padding: '0.7rem 1.5rem', background: 'transparent',
                                 border: `1px solid ${C.border}`, borderRadius: 10,
@@ -340,24 +387,8 @@ export default function WorkflowModal({ item, result, onClose }) {
                                 cursor: 'pointer',
                             }}
                         >
-                            Cancelar
+                            Fechar
                         </button>
-                    )}
-
-                    {phase === 'error' && (
-                        <>
-                            <button
-                                onClick={onClose}
-                                style={{
-                                    padding: '0.7rem 1.5rem', background: 'transparent',
-                                    border: `1px solid ${C.border}`, borderRadius: 10,
-                                    color: C.textSec, fontFamily: 'DM Sans', fontSize: '13px',
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                Fechar
-                            </button>
-                        </>
                     )}
 
                     {phase === 'done' && (
@@ -376,7 +407,7 @@ export default function WorkflowModal({ item, result, onClose }) {
 
                             {output?.docxBlob && (
                                 <button
-                                    onClick={handleDownloadDocx}
+                                    onClick={() => downloadBlob(output.docxBlob, `${output.filename}.docx`)}
                                     style={{
                                         padding: '0.7rem 1.25rem',
                                         background: 'rgba(201,169,98,0.1)',
@@ -388,23 +419,6 @@ export default function WorkflowModal({ item, result, onClose }) {
                                     }}
                                 >
                                     📄 Baixar DOCX
-                                </button>
-                            )}
-
-                            {output?.pdfBlob && (
-                                <button
-                                    onClick={handleDownloadPdf}
-                                    style={{
-                                        padding: '0.7rem 1.25rem',
-                                        background: C.accent,
-                                        border: 'none', borderRadius: 10,
-                                        color: '#0C0C0E',
-                                        fontFamily: 'DM Sans', fontSize: '13px',
-                                        fontWeight: 600, cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.4rem',
-                                    }}
-                                >
-                                    📑 Baixar PDF
                                 </button>
                             )}
                         </>

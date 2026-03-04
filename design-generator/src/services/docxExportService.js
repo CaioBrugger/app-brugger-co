@@ -41,6 +41,17 @@ const SIZES = {
     caption: 18, // 9pt
 };
 
+// ─── Sanitização de texto ──────────────────────────────────────────────────────
+/**
+ * Remove caracteres de controle inválidos em XML 1.0 que corrompem o DOCX.
+ * Mantém tab (0x09), LF (0x0A) e CR (0x0D).
+ */
+function sanitize(text) {
+    if (!text) return '';
+    // eslint-disable-next-line no-control-regex
+    return String(text).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+}
+
 // ─── Helpers de estilo ─────────────────────────────────────────────────────────
 function makeHeading1(text) {
     return new Paragraph({
@@ -48,7 +59,7 @@ function makeHeading1(text) {
         spacing: { before: 480, after: 240 },
         children: [
             new TextRun({
-                text,
+                text: sanitize(text),
                 font: HEADING_FONT,
                 size: SIZES.h1,
                 color: ACCENT_COLOR,
@@ -64,7 +75,7 @@ function makeHeading2(text) {
         spacing: { before: 360, after: 160 },
         children: [
             new TextRun({
-                text,
+                text: sanitize(text),
                 font: HEADING_FONT,
                 size: SIZES.h2,
                 color: 'E0C070',
@@ -80,7 +91,7 @@ function makeHeading3(text) {
         spacing: { before: 240, after: 120 },
         children: [
             new TextRun({
-                text,
+                text: sanitize(text),
                 font: BODY_FONT,
                 size: SIZES.h3,
                 color: '3A3A3A',
@@ -111,7 +122,7 @@ function makeBibleQuote(text) {
         },
         children: [
             new TextRun({
-                text,
+                text: sanitize(text),
                 font: BODY_FONT,
                 size: SIZES.quote,
                 italics: true,
@@ -127,7 +138,7 @@ function makeBulletItem(text) {
         spacing: { before: 40, after: 40, line: 320, lineRule: 'auto' },
         children: [
             new TextRun({
-                text,
+                text: sanitize(text),
                 font: BODY_FONT,
                 size: SIZES.body,
                 color: TEXT_COLOR,
@@ -142,7 +153,7 @@ function makeImagePlaceholder(text) {
         spacing: { before: 240, after: 240 },
         children: [
             new TextRun({
-                text: `[ Imagem: ${text} ]`,
+                text: `[ Imagem: ${sanitize(text)} ]`,
                 font: BODY_FONT,
                 size: SIZES.caption,
                 color: 'AAAAAA',
@@ -152,7 +163,22 @@ function makeImagePlaceholder(text) {
     });
 }
 
-function makeImageParagraph(arrayBuffer, width, height) {
+/**
+ * Detecta o tipo da imagem a partir da URL.
+ * docx aceita: 'png' | 'jpg' | 'gif' | 'bmp'
+ * FLUX/inference.sh retorna JPEG por padrão.
+ */
+function detectImageType(url) {
+    if (!url) return 'jpg';
+    const lower = (url || '').toLowerCase().split('?')[0];
+    if (lower.endsWith('.png'))  return 'png';
+    if (lower.endsWith('.gif'))  return 'gif';
+    if (lower.endsWith('.bmp'))  return 'bmp';
+    // .jpg, .jpeg, .webp e qualquer outro → jpg (FLUX gera JPEG)
+    return 'jpg';
+}
+
+function makeImageParagraph(arrayBuffer, width, height, imageType = 'jpg') {
     return new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 240, after: 240 },
@@ -160,7 +186,7 @@ function makeImageParagraph(arrayBuffer, width, height) {
             new ImageRun({
                 data: arrayBuffer,
                 transformation: { width, height },
-                type: 'png',
+                type: imageType,
             }),
         ],
     });
@@ -186,29 +212,24 @@ function parseInlineMarkdown(line) {
 
     while ((match = regex.exec(line)) !== null) {
         if (match.index > lastIndex) {
-            // Texto entre matches — não deve acontecer mas por segurança
-            runs.push(new TextRun({ text: line.slice(lastIndex, match.index), font: BODY_FONT, size: SIZES.body, color: TEXT_COLOR }));
+            runs.push(new TextRun({ text: sanitize(line.slice(lastIndex, match.index)), font: BODY_FONT, size: SIZES.body, color: TEXT_COLOR }));
         }
 
         if (match[2]) {
-            // Bold + Italic
-            runs.push(new TextRun({ text: match[2], font: BODY_FONT, size: SIZES.body, bold: true, italics: true, color: TEXT_COLOR }));
+            runs.push(new TextRun({ text: sanitize(match[2]), font: BODY_FONT, size: SIZES.body, bold: true, italics: true, color: TEXT_COLOR }));
         } else if (match[3]) {
-            // Bold
-            runs.push(new TextRun({ text: match[3], font: BODY_FONT, size: SIZES.body, bold: true, color: TEXT_COLOR }));
+            runs.push(new TextRun({ text: sanitize(match[3]), font: BODY_FONT, size: SIZES.body, bold: true, color: TEXT_COLOR }));
         } else if (match[4]) {
-            // Italic
-            runs.push(new TextRun({ text: match[4], font: BODY_FONT, size: SIZES.body, italics: true, color: TEXT_COLOR }));
+            runs.push(new TextRun({ text: sanitize(match[4]), font: BODY_FONT, size: SIZES.body, italics: true, color: TEXT_COLOR }));
         } else if (match[5]) {
-            // Texto normal
-            runs.push(new TextRun({ text: match[5], font: BODY_FONT, size: SIZES.body, color: TEXT_COLOR }));
+            runs.push(new TextRun({ text: sanitize(match[5]), font: BODY_FONT, size: SIZES.body, color: TEXT_COLOR }));
         }
 
         lastIndex = regex.lastIndex;
         if (match[0].length === 0) regex.lastIndex++;
     }
 
-    return runs.length > 0 ? runs : [new TextRun({ text: line, font: BODY_FONT, size: SIZES.body, color: TEXT_COLOR })];
+    return runs.length > 0 ? runs : [new TextRun({ text: sanitize(line), font: BODY_FONT, size: SIZES.body, color: TEXT_COLOR })];
 }
 
 // ─── Parser principal de Markdown → docx elements ────────────────────────────
@@ -240,11 +261,16 @@ function parseMarkdownToDocx(markdown, imageMap) {
         if (imgPlaceholderMatch) {
             const imgIndex = parseInt(imgPlaceholderMatch[1], 10);
             const imgData = imageMap?.get(imgIndex);
+            console.log(`[DOCX] Placeholder __IMAGE_${imgIndex}__: imageMap tem ${imageMap?.size ?? 0} entradas, imgData=${imgData ? 'encontrado' : 'NÃO encontrado'}, arrayBuffer=${imgData?.arrayBuffer ? `${imgData.arrayBuffer.byteLength}b` : 'null'}`);
             if (imgData?.arrayBuffer) {
-                // Dimensões padrão para ebook (largura máxima A4 menos margens ≈ 600px)
+                // Calcular dimensões pelo aspect ratio real do bloco
                 const width = 600;
-                const height = Math.round(600 * (9 / 16)); // aspecto 16:9 padrão
-                elements.push(makeImageParagraph(imgData.arrayBuffer, width, height));
+                const aspectStr = imgData.aspect || '16:9';
+                const [aw, ah] = aspectStr.split(':').map(Number);
+                const height = (aw > 0 && ah > 0) ? Math.round(width * (ah / aw)) : Math.round(width * 9 / 16);
+                // Usar imageType normalizado pelo imageGeneratorService (sempre 'jpg' após Canvas)
+                const imageType = imgData.imageType || 'jpg';
+                elements.push(makeImageParagraph(imgData.arrayBuffer, width, height, imageType));
             } else {
                 elements.push(makeImagePlaceholder(imgData?.prompt || `Imagem ${imgIndex + 1}`));
             }
@@ -357,7 +383,7 @@ function buildCoverPage(productName, subtitle) {
             spacing: { before: 0, after: 240 },
             children: [
                 new TextRun({
-                    text: productName || 'Produto Digital',
+                    text: sanitize(productName || 'Produto Digital'),
                     font: HEADING_FONT,
                     size: 72,
                     color: '1A1A1A',
@@ -373,7 +399,7 @@ function buildCoverPage(productName, subtitle) {
                 spacing: { before: 0, after: 480 },
                 children: [
                     new TextRun({
-                        text: subtitle,
+                        text: sanitize(subtitle),
                         font: BODY_FONT,
                         size: 26,
                         color: ACCENT_COLOR,
@@ -413,7 +439,7 @@ function buildHeader(productName) {
                 border: { bottom: { color: ACCENT_COLOR, space: 4, style: BorderStyle.SINGLE, size: 6 } },
                 children: [
                     new TextRun({
-                        text: productName || '',
+                        text: sanitize(productName || ''),
                         font: BODY_FONT,
                         size: 18,
                         color: 'AAAAAA',
@@ -611,6 +637,10 @@ export async function generatePdf(markdown, imageMap, productName) {
 
         return pdf.output('blob');
     } finally {
+        // Revogar blob URLs criadas para as imagens (evita memory leak)
+        container.querySelectorAll('img[src^="blob:"]').forEach(img => {
+            URL.revokeObjectURL(img.src);
+        });
         document.body.removeChild(container);
     }
 }
@@ -645,7 +675,12 @@ function buildHtmlForPdf(markdown, imageMap, productName) {
         if (imgMatch) {
             const idx = parseInt(imgMatch[1], 10);
             const imgData = imageMap?.get(idx);
-            if (imgData?.url) {
+            if (imgData?.arrayBuffer) {
+                // Usar blob URL do arrayBuffer em vez da URL CDN (evita CORS no html2canvas)
+                const blob = new Blob([imgData.arrayBuffer], { type: 'image/jpeg' });
+                const blobUrl = URL.createObjectURL(blob);
+                parts.push(`<div style="text-align:center; margin: 24px 0;"><img src="${blobUrl}" style="max-width:100%; border-radius:4px;" /></div>`);
+            } else if (imgData?.url) {
                 parts.push(`<div style="text-align:center; margin: 24px 0;"><img src="${escHtml(imgData.url)}" style="max-width:100%; border-radius:4px;" crossorigin="anonymous" /></div>`);
             }
             i++;
