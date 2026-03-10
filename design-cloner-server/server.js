@@ -689,6 +689,190 @@ function normalizeSpacing(values) {
 // sem restrições de CORS do browser.
 const https = require('https');
 const http  = require('http');
+const fs    = require('fs');
+const path  = require('path');
+
+// ─── Descobrir path do .env do projeto ────────────────────────────────────────
+function discoverEnvPath() {
+    // Tenta via variável de ambiente (set pelo dev.js)
+    if (process.env.PROJECT_ROOT) {
+        return path.join(process.env.PROJECT_ROOT, '.env');
+    }
+    // Fallback: ler projectRoot do vite.config.js (brugger-co-config)
+    try {
+        const configPath = path.resolve(__dirname, '..', 'brugger-co-config', 'vite.config.js');
+        const cfg = fs.readFileSync(configPath, 'utf8');
+        const m = cfg.match(/const projectRoot\s*=\s*'([^']+)'/);
+        if (m) return path.join(m[1], '.env');
+    } catch {}
+    return null;
+}
+
+const ENV_FILE_PATH = discoverEnvPath();
+if (ENV_FILE_PATH) {
+    console.log(`[env] .env path: ${ENV_FILE_PATH}`);
+} else {
+    console.warn('[env] ⚠ Não foi possível descobrir o path do .env');
+}
+
+// Derivar pasta pages-to-clone a partir do PROJECT_ROOT (mesmo pai do .env)
+const PROJECT_ROOT = ENV_FILE_PATH ? path.dirname(ENV_FILE_PATH) : null;
+const PAGES_TO_CLONE_DIR = PROJECT_ROOT ? path.join(PROJECT_ROOT, 'pages-to-clone') : null;
+if (PAGES_TO_CLONE_DIR) {
+    console.log(`[local-pages] dir: ${PAGES_TO_CLONE_DIR}`);
+}
+
+// ─── ENV Read/Write Endpoints ─────────────────────────────────────────────────
+app.get('/env', (req, res) => {
+    if (!ENV_FILE_PATH) return res.status(503).json({ error: 'ENV_FILE_PATH não configurado' });
+    try {
+        const content = fs.readFileSync(ENV_FILE_PATH, 'utf8');
+        const vars = {};
+        for (const line of content.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            const idx = trimmed.indexOf('=');
+            if (idx < 0) continue;
+            const key = trimmed.slice(0, idx).trim();
+            const value = trimmed.slice(idx + 1).trim();
+            if (key) vars[key] = value;
+        }
+        res.json({ ok: true, vars });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/env', (req, res) => {
+    if (!ENV_FILE_PATH) return res.status(503).json({ error: 'ENV_FILE_PATH não configurado' });
+    const { vars } = req.body || {};
+    if (!vars || typeof vars !== 'object') return res.status(400).json({ error: 'vars inválido' });
+    try {
+        let lines = [];
+        try { lines = fs.readFileSync(ENV_FILE_PATH, 'utf8').split('\n'); } catch {}
+        const updated = new Set();
+        const result = lines.map(line => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) return line;
+            const idx = trimmed.indexOf('=');
+            if (idx < 0) return line;
+            const key = trimmed.slice(0, idx).trim();
+            if (key in vars) {
+                updated.add(key);
+                return `${key}=${vars[key]}`;
+            }
+            return line;
+        });
+        for (const [key, value] of Object.entries(vars)) {
+            if (!updated.has(key)) result.push(`${key}=${value}`);
+        }
+        fs.writeFileSync(ENV_FILE_PATH, result.join('\n'));
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── Local Pages Endpoints ────────────────────────────────────────────────────
+
+// GET /local-pages — lista arquivos .html em pages-to-clone/
+app.get('/local-pages', (req, res) => {
+    if (!PAGES_TO_CLONE_DIR) return res.status(503).json({ error: 'PROJECT_ROOT não configurado' });
+    try {
+        if (!fs.existsSync(PAGES_TO_CLONE_DIR)) fs.mkdirSync(PAGES_TO_CLONE_DIR, { recursive: true });
+        const files = fs.readdirSync(PAGES_TO_CLONE_DIR)
+            .filter(f => /\.(html?|htm)$/i.test(f))
+            .map(f => {
+                const stat = fs.statSync(path.join(PAGES_TO_CLONE_DIR, f));
+                return { name: f, size: stat.size, modified: stat.mtime.toISOString() };
+            })
+            .sort((a, b) => new Date(b.modified) - new Date(a.modified));
+        res.json({ ok: true, files });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /extract-local?name=arquivo.html — extrai DS de arquivo HTML local via Playwright
+app.get('/extract-local', async (req, res) => {
+    const { name } = req.query;
+    if (!name) return res.status(400).json({ error: 'name é obrigatório' });
+    if (!PAGES_TO_CLONE_DIR) return res.status(503).json({ error: 'PROJECT_ROOT não configurado' });
+
+    // Sanitizar para evitar path traversal
+    const safeName = path.basename(name);
+    const filePath = path.join(PAGES_TO_CLONE_DIR, safeName);
+
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: `Arquivo não encontrado: ${safeName}` });
+    }
+
+    const fileUrl = 'file:///' + filePath.replace(/\\/g, '/');
+    console.log(`\n[extract-local] ► ${safeName}`);
+    const startTime = Date.now();
+    let browser;
+
+    try {
+        browser = await chromium.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        });
+
+        const context = await browser.newContext({
+            viewport: { width: 1280, height: 800 },
+            ignoreHTTPSErrors: true,
+        });
+
+        const page = await context.newPage();
+        await page.goto(fileUrl, { waitUntil: 'networkidle', timeout: 30000 });
+        await page.waitForTimeout(1500);
+        await autoScroll(page);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.waitForTimeout(300);
+
+        const [cssVars, rawColors, typography, spacings, components, meta] = await Promise.all([
+            extractCSSVariables(page).catch(err => ({ vars: {}, error: err.message })),
+            extractColors(page).catch(err => ({ colors: [], error: err.message })),
+            extractTypography(page).catch(err => ({ fonts: [], sizes: [], weights: [], googleFonts: [] })),
+            extractSpacings(page).catch(() => ({ spacings: [] })),
+            extractComponents(page).catch(() => ({})),
+            extractMeta(page).catch(() => ({})),
+        ]);
+
+        const screenshot = await captureScreenshot(page).catch(() => null);
+        await browser.close();
+        browser = null;
+
+        const colorPalette = clusterColors(rawColors.colors || []);
+        const spacingScale = normalizeSpacing(spacings.spacings || []);
+
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[extract-local] ✓ ${elapsed}s | Cores: ${rawColors.colors?.length || 0} → ${colorPalette.palette?.length || 0} | CSS vars: ${Object.keys(cssVars.vars || {}).length}`);
+
+        res.json({
+            success: true,
+            url: fileUrl,
+            localFile: safeName,
+            extractedAt: new Date().toISOString(),
+            elapsed: `${elapsed}s`,
+            meta,
+            cssVars: cssVars.vars || {},
+            colorPalette,
+            typography,
+            spacingScale,
+            components,
+            screenshot,
+        });
+
+    } catch (err) {
+        console.error(`[extract-local] ✗ Erro:`, err.message);
+        res.status(500).json({ success: false, error: err.message, file: safeName });
+    } finally {
+        if (browser) {
+            try { await browser.close(); } catch {}
+        }
+    }
+});
 
 app.get('/fetch-image', (req, res) => {
     const { url } = req.query;
@@ -745,12 +929,31 @@ app.get('/fetch-image', (req, res) => {
 });
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+
+// Ignorar SIGINT para não morrer quando outro processo no mesmo terminal receber Ctrl+C.
+// O processo é encerrado pelo dev.js via .kill() explícito quando necessário.
+process.on('SIGINT', () => {
+    console.log('\n[design-cloner] SIGINT recebido — ignorando (use Ctrl+C no processo pai ou kill para parar)');
+});
+
+const server = app.listen(PORT, () => {
     console.log(`\n╔══════════════════════════════════════╗`);
     console.log(`║  design-cloner-server v2.0.0         ║`);
     console.log(`║  http://localhost:${PORT}               ║`);
     console.log(`╚══════════════════════════════════════╝`);
     console.log(`\n  GET /health`);
     console.log(`  GET /extract?url=https://example.com`);
+    console.log(`  GET /local-pages`);
+    console.log(`  GET /extract-local?name=arquivo.html`);
     console.log(`  GET /fetch-image?url=https://cdn.example.com/img.jpg\n`);
+});
+
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`\n[design-cloner] ⚠  Porta ${PORT} já está em uso.`);
+        console.error(`[design-cloner] Outra instância provavelmente já está rodando — encerrando duplicata limpa.\n`);
+        process.exit(0); // exit 0 = sem erro, dev.js não trata como crash
+    }
+    console.error('[design-cloner] Erro fatal ao iniciar:', err);
+    process.exit(1);
 });

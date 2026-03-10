@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { callGeminiWithImages, callGemini } from '../api';
 import { callClaudeWithImages } from '../services/claude';
 import { buildExtractThemePrompt, buildThemePreviewPrompt, buildVisualAnalysisPrompt } from '../prompt';
 import { fetchThemes, saveTheme, deleteTheme } from '../services/themesService';
-import { fetchSiteStyles, checkDesignClonerServer } from '../services/urlFetcher';
+import { fetchSiteStyles, checkDesignClonerServer, listLocalPages, fetchLocalPage } from '../services/urlFetcher';
 import { captureScreenshots } from '../services/screenshotService';
 
 function fileToBase64(file) {
@@ -28,6 +29,7 @@ const STEPS = [
 ];
 
 export default function Themes() {
+    const navigate = useNavigate();
     const [name, setName] = useState('');
     const [specs, setSpecs] = useState('');
     const [urls, setUrls] = useState('');
@@ -45,12 +47,17 @@ export default function Themes() {
     const [error, setError] = useState('');
     const [tab, setTab] = useState('create');
     const [galleryView, setGalleryView] = useState(null);
+    const [localPages, setLocalPages] = useState([]);
     const fileInputRef = useRef(null);
     const previewRef = useRef(null);
 
     useEffect(() => {
         fetchThemes().then(setSavedThemes);
     }, []);
+
+    useEffect(() => {
+        if (tab === 'local') listLocalPages().then(setLocalPages);
+    }, [tab]);
 
     const handleImageUpload = useCallback((e) => {
         const files = Array.from(e.target.files || []);
@@ -297,6 +304,128 @@ export default function Themes() {
         setGalleryView(theme);
     };
 
+    const generateFromLocal = async (fileName) => {
+        const themeName = name.trim() || fileName.replace(/\.(html?|htm)$/i, '');
+        if (!name.trim()) setName(themeName);
+        // Mudar para aba create imediatamente para mostrar progresso
+        setTab('create');
+        await new Promise(r => setTimeout(r, 50));
+
+        setLoading(true);
+        setError('');
+        setResult(null);
+        setPreviewHtml('');
+        setScreenshots([]);
+        setVisualAnalysis(null);
+        setStepStatus({});
+        setCurrentStep(0);
+
+        const status = {};
+        const updateStatus = (step, icon, msg) => {
+            status[step] = { icon, msg };
+            setStepStatus({ ...status });
+        };
+
+        try {
+            // Step 1: Extrair via Playwright local
+            let siteData = null;
+            try {
+                siteData = await fetchLocalPage(fileName);
+                const palette = siteData._serverData?.colorPalette?.palette?.length || 0;
+                const cssVarsCount = siteData._serverData?.cssVarsCount || 0;
+                updateStatus('fetch', '✅', `Local Playwright: ${palette} cores, ${cssVarsCount} CSS vars — ${fileName}`);
+            } catch (e) {
+                updateStatus('fetch', '❌', `Falha: ${e.message}`);
+                throw e;
+            }
+
+            setCurrentStep(1);
+
+            // Step 2: Screenshot do servidor
+            let capturedScreenshots = [];
+            const serverScreenshot = siteData?._serverData?.screenshot;
+            if (serverScreenshot) {
+                capturedScreenshots = [{
+                    data: serverScreenshot.data,
+                    mimeType: serverScreenshot.mimeType,
+                    dataUrl: `data:${serverScreenshot.mimeType};base64,${serverScreenshot.data}`,
+                    label: fileName,
+                    width: serverScreenshot.width,
+                    height: serverScreenshot.height,
+                }];
+                setScreenshots(capturedScreenshots);
+                updateStatus('screenshot', '✅', '1 screenshot via Playwright local');
+            } else {
+                updateStatus('screenshot', '⏭️', 'Screenshot não disponível');
+            }
+
+            setCurrentStep(2);
+
+            // Step 3: Claude Sonnet visual analysis
+            let visionResult = null;
+            const allImages = capturedScreenshots.filter(Boolean).map(s => ({ mimeType: s.mimeType, data: s.data }));
+            if (allImages.length > 0) {
+                try {
+                    const visionPrompt = buildVisualAnalysisPrompt(themeName);
+                    const visionRaw = await callClaudeWithImages(
+                        visionPrompt,
+                        `Analyze this screenshot of the page "${themeName}" and extract the complete design system. Return ONLY valid JSON.`,
+                        allImages
+                    );
+                    try {
+                        visionResult = typeof visionRaw === 'string'
+                            ? JSON.parse(visionRaw.replace(/```json?\s*/g, '').replace(/```/g, '').trim())
+                            : visionRaw;
+                    } catch {
+                        const jsonMatch = visionRaw?.match(/\{[\s\S]*\}/);
+                        visionResult = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+                    }
+                    setVisualAnalysis(visionResult);
+                    updateStatus('vision', '✅', `Análise visual — ${visionResult?.personality?.join(', ') || 'tokens extraídos'}`);
+                } catch (vErr) {
+                    updateStatus('vision', '❌', `Claude falhou: ${vErr.message}`);
+                }
+            } else {
+                updateStatus('vision', '⏭️', 'Sem screenshots — pulado');
+            }
+
+            setCurrentStep(3);
+
+            // Step 4: Gemini token extraction
+            const prompt = buildExtractThemePrompt(themeName, '', '', siteData, visionResult);
+            let tokens;
+            if (allImages.length > 0) {
+                tokens = await callGeminiWithImages(prompt, allImages);
+            } else {
+                tokens = await callGemini(prompt);
+            }
+            setResult(tokens);
+            updateStatus('extract', '✅', 'Design System extraído (Playwright local)');
+            setCurrentStep(4);
+
+            // Step 5: Preview
+            try {
+                const previewPrompt = buildThemePreviewPrompt(tokens);
+                const preview = await callGemini(previewPrompt);
+                if (preview?.html) {
+                    setPreviewHtml(preview.html);
+                    updateStatus('preview', '✅', 'Preview gerado');
+                } else {
+                    updateStatus('preview', '⚠️', 'Preview vazio');
+                }
+            } catch {
+                updateStatus('preview', '❌', 'Falha ao gerar preview');
+            }
+
+            setCurrentStep(5);
+        } catch (err) {
+            setError(err.message || 'Erro ao processar arquivo local');
+            setCurrentStep(-1);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const getTokenColors = (tokens) => {
         if (!tokens) return {};
         return tokens.atoms?.colors || tokens.colors || {};
@@ -328,6 +457,9 @@ export default function Themes() {
                 </button>
                 <button className={`themes-tab ${tab === 'gallery' ? 'active' : ''}`} onClick={() => setTab('gallery')}>
                     📁 Galeria <span className="themes-tab-count">{savedThemes.length}</span>
+                </button>
+                <button className={`themes-tab ${tab === 'local' ? 'active' : ''}`} onClick={() => setTab('local')}>
+                    📂 Local {localPages.length > 0 && <span className="themes-tab-count">{localPages.length}</span>}
                 </button>
             </div>
 
@@ -715,7 +847,7 @@ export default function Themes() {
                             ) : (
                                 <div className="themes-gallery-grid">
                                     {savedThemes.map(theme => (
-                                        <div key={theme.id} className="themes-gallery-card" onClick={() => openThemeDetail(theme)}>
+                                        <div key={theme.id} className="themes-gallery-card" onClick={() => navigate(`/themes/${theme.id}`)}>
                                             <div className="themes-gallery-card-palette">
                                                 {(theme.accentColors || []).slice(0, 5).map((c, i) => (
                                                     <div key={i} className="themes-gallery-color" style={{ background: c }} />
@@ -729,6 +861,10 @@ export default function Themes() {
                                                 </span>
                                             </div>
                                             <div className="themes-gallery-card-actions">
+                                                <button className="themes-btn-icon" title="Ver Design System" onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    navigate(`/themes/${theme.id}`);
+                                                }}>⚛️</button>
                                                 <button className="themes-btn-icon" title="Copiar CSS" onClick={(e) => {
                                                     e.stopPropagation();
                                                     copyCSS(getCSS(theme.tokens));
@@ -743,6 +879,82 @@ export default function Themes() {
                                 </div>
                             )}
                         </>
+                    )}
+                </div>
+            )}
+            {tab === 'local' && (
+                <div className="themes-gallery">
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem', gap: '1rem' }}>
+                        <div>
+                            <h3 style={{ margin: '0 0 0.25rem', color: '#fff', fontSize: '1rem' }}>Páginas para Clonar</h3>
+                            <p style={{ margin: 0, color: '#888', fontSize: '0.8rem' }}>
+                                Coloque arquivos <code style={{ background: '#1a1a1a', padding: '1px 4px', borderRadius: '3px' }}>.html</code> na pasta{' '}
+                                <code style={{ background: '#1a1a1a', padding: '1px 4px', borderRadius: '3px' }}>pages-to-clone/</code> do projeto
+                            </p>
+                        </div>
+                        <button
+                            className="themes-btn-secondary"
+                            onClick={() => listLocalPages().then(setLocalPages)}
+                            style={{ flexShrink: 0 }}
+                        >
+                            ↺ Atualizar
+                        </button>
+                    </div>
+
+                    {/* Campo de nome opcional */}
+                    <div className="themes-field" style={{ marginBottom: '1.25rem' }}>
+                        <label className="themes-label">Nome do Design System (opcional)</label>
+                        <input
+                            type="text"
+                            className="themes-input"
+                            placeholder="Deixe em branco para usar o nome do arquivo"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            disabled={loading}
+                        />
+                    </div>
+
+                    {error && <div className="themes-error" style={{ marginBottom: '1rem' }}>{error}</div>}
+
+                    {localPages.length === 0 ? (
+                        <div className="themes-gallery-empty">
+                            <span>📂</span>
+                            <h3>Nenhum arquivo encontrado</h3>
+                            <p>
+                                Salve páginas <code>.html</code> na pasta{' '}
+                                <strong>pages-to-clone/</strong> e clique em "Atualizar".<br />
+                                <small style={{ color: '#666' }}>Dica: use "Salvar como → Página Web Completa" no browser.</small>
+                            </p>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {localPages.map(file => (
+                                <div key={file.name} style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    padding: '0.75rem 1rem',
+                                    background: '#111',
+                                    border: '1px solid #2a2a2a',
+                                    borderRadius: '8px',
+                                }}>
+                                    <span style={{ fontSize: '1.1rem' }}>📄</span>
+                                    <span style={{ flex: 1, color: '#e0e0e0', fontSize: '0.875rem', fontFamily: 'monospace' }}>{file.name}</span>
+                                    <span style={{ color: '#555', fontSize: '0.75rem' }}>{(file.size / 1024).toFixed(0)} KB</span>
+                                    <span style={{ color: '#555', fontSize: '0.75rem' }}>
+                                        {new Date(file.modified).toLocaleDateString('pt-BR')}
+                                    </span>
+                                    <button
+                                        className="themes-generate-btn"
+                                        style={{ padding: '0.4rem 0.9rem', fontSize: '0.8rem', minWidth: 'auto' }}
+                                        onClick={() => generateFromLocal(file.name)}
+                                        disabled={loading}
+                                    >
+                                        {loading ? '⏳' : '⚛️ Extrair'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
             )}

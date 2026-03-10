@@ -274,6 +274,43 @@ function formatComponentsForPrompt(components) {
     return lines.join('\n');
 }
 
+// ─── Local Pages API ──────────────────────────────────────────────────────────
+
+/**
+ * Lista arquivos .html disponíveis em pages-to-clone/ via servidor local.
+ * @returns {Promise<Array<{name: string, size: number, modified: string}>>}
+ */
+export async function listLocalPages() {
+    try {
+        const res = await fetch(`${DESIGN_CLONER_SERVER}/local-pages`, {
+            signal: AbortSignal.timeout(3000)
+        });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.files || [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Extrai DS de um arquivo HTML local via design-cloner-server.
+ * Retorna o mesmo formato adaptado que fetchSiteStyles (playwright-server).
+ * @param {string} name - Nome do arquivo (ex: "meusite.html")
+ */
+export async function fetchLocalPage(name) {
+    const res = await fetch(
+        `${DESIGN_CLONER_SERVER}/extract-local?name=${encodeURIComponent(name)}`,
+        { signal: AbortSignal.timeout(60000) }
+    );
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(err.error || `Server error ${res.status}`);
+    }
+    const serverData = await res.json();
+    return adaptServerResponse(serverData);
+}
+
 function buildSyntheticCSS(cssVars, colorPalette, typography) {
     const parts = [];
 

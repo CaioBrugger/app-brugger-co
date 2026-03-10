@@ -1,0 +1,13 @@
+📂 PÁGINAS PARA CLONAR
+======================
+
+Coloque aqui os arquivos .html das páginas que deseja extrair o Design System.
+
+Como usar:
+1. Acesse o site que deseja clonar no browser
+2. Salve a página completa (Ctrl+S → "Página Web completa") ou use "Salvar como..."
+3. Copie o arquivo .html para esta pasta
+4. No app, vá em Temas → aba "📂 Local" → clique em "Atualizar" → "Extrair"
+
+Dica: Salvar como "Página Web completa" (não "somente HTML") inclui os recursos locais
+e permite que o Playwright renderize o CSS e fontes corretamente.
