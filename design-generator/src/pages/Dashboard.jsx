@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchTodos, createTodo, toggleTodo, deleteTodo } from '../services/todosService';
+import { supabase } from '../lib/supabase';
 
 const agentCount = Object.keys(
     import.meta.glob('../../.agent/agents/*.md')
@@ -201,6 +202,109 @@ const TOOLS = [
 
 const AGENT_NAMES = ['Design', 'Dev', 'UX', 'PM', 'QA', 'Analyst', 'DevOps', 'Architect'];
 
+// ── Pipeline Kanban ────────────────────────────────────────
+
+function usePipelineStats() {
+    const [stats, setStats] = useState({ lps: 0, analyses: 0, deliverables: 0, templates: 0, components: 0, loading: true });
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [lpsRes, analysesRes, delivRes, tmplRes, compRes] = await Promise.allSettled([
+                    supabase.from('landing_pages').select('*', { count: 'exact', head: true }),
+                    supabase.from('lp_analyses').select('*', { count: 'exact', head: true }),
+                    supabase.from('generated_deliverables').select('*', { count: 'exact', head: true }),
+                    supabase.from('lp_templates').select('*', { count: 'exact', head: true }),
+                    supabase.from('lp_components').select('*', { count: 'exact', head: true }),
+                ]);
+                setStats({
+                    lps:         lpsRes.status === 'fulfilled'       ? (lpsRes.value.count       ?? 0) : 0,
+                    analyses:    analysesRes.status === 'fulfilled'   ? (analysesRes.value.count  ?? 0) : 0,
+                    deliverables: delivRes.status === 'fulfilled'     ? (delivRes.value.count     ?? 0) : 0,
+                    templates:   tmplRes.status === 'fulfilled'       ? (tmplRes.value.count      ?? 0) : 0,
+                    components:  compRes.status === 'fulfilled'       ? (compRes.value.count      ?? 0) : 0,
+                    loading: false,
+                });
+            } catch {
+                setStats(s => ({ ...s, loading: false }));
+            }
+        }
+        load();
+    }, []);
+
+    return stats;
+}
+
+const PIPELINE_STAGES = [
+    { key: 'lps',          label: 'LPs Criadas',       icon: '📄', to: '/gallery',         desc: 'Landing pages salvas' },
+    { key: 'analyses',     label: 'Analisadas',        icon: '🔍', to: '/product-creator',  desc: 'Passaram pelo Estruturador' },
+    { key: 'deliverables', label: 'Entregáveis',       icon: '📦', to: '/product-creator',  desc: 'Ebooks e materiais gerados' },
+];
+
+const LIBRARY_CARDS = [
+    { key: 'templates',  label: 'Templates',    icon: '📁', to: '/builder',     desc: 'Layouts de LP salvos' },
+    { key: 'components', label: 'Componentes',  icon: '⊞',  to: '/components',  desc: 'Seções reutilizáveis' },
+];
+
+function PipelineKanban({ stats }) {
+    return (
+        <section style={{ marginBottom: '2rem' }}>
+            <h2 className="dash-section-title" style={{ marginBottom: '1rem' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <path d="M3 9h18M9 21V9" />
+                </svg>
+                Esteira de Produção
+            </h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem' }}>
+                {PIPELINE_STAGES.map((stage, i) => (
+                    <Link key={stage.key} to={stage.to} style={{ textDecoration: 'none' }}>
+                        <div style={{
+                            background: 'var(--surface)', border: '1px solid var(--border)',
+                            borderRadius: 'var(--radius-md)', padding: '1rem',
+                            transition: 'all 0.2s', cursor: 'pointer', position: 'relative', overflow: 'hidden',
+                        }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(201,169,98,0.3)'; e.currentTarget.style.background = 'rgba(201,169,98,0.04)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)'; }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '18px' }}>{stage.icon}</span>
+                                {i < PIPELINE_STAGES.length - 1 && (
+                                    <span style={{ fontSize: '14px', color: 'var(--text-muted)', position: 'absolute', right: '-2px', top: '50%', transform: 'translateY(-50%)', zIndex: 1 }}>›</span>
+                                )}
+                            </div>
+                            <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--accent)', fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                                {stats.loading ? '…' : stats[stage.key]}
+                            </div>
+                            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '2px' }}>{stage.label}</div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{stage.desc}</div>
+                        </div>
+                    </Link>
+                ))}
+                {LIBRARY_CARDS.map(card => (
+                    <Link key={card.key} to={card.to} style={{ textDecoration: 'none' }}>
+                        <div style={{
+                            background: 'var(--surface)', border: '1px dashed var(--border)',
+                            borderRadius: 'var(--radius-md)', padding: '1rem',
+                            transition: 'all 0.2s', cursor: 'pointer',
+                        }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(201,169,98,0.3)'; e.currentTarget.style.background = 'rgba(201,169,98,0.04)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)'; }}
+                        >
+                            <div style={{ fontSize: '18px', marginBottom: '8px' }}>{card.icon}</div>
+                            <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', marginBottom: '4px' }}>
+                                {stats.loading ? '…' : stats[card.key]}
+                            </div>
+                            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '2px' }}>{card.label}</div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{card.desc}</div>
+                        </div>
+                    </Link>
+                ))}
+            </div>
+        </section>
+    );
+}
+
 // ── Main Component ─────────────────────────────────────────
 
 export default function Dashboard() {
@@ -211,6 +315,7 @@ export default function Dashboard() {
     const [saving, setSaving] = useState(false);
     const [mounted, setMounted] = useState(false);
     const time = useLiveClock();
+    const pipelineStats = usePipelineStats();
 
     useEffect(() => {
         setMounted(true);
@@ -299,6 +404,9 @@ export default function Dashboard() {
                 <StatCard value={String(todos.length)} label="Tarefas"       delay={0.16} icon={<IconTask />} />
                 <StatCard value="2"                    label="APIs Ativas"   delay={0.24} icon={<IconPlug />} />
             </div>
+
+            {/* ══ PIPELINE KANBAN ══════════════════════════════════ */}
+            <PipelineKanban stats={pipelineStats} />
 
             {/* ══ MAIN GRID ════════════════════════════════════════ */}
             <div className="dash-grid">

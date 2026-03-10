@@ -4,10 +4,17 @@ import { fetchThemes } from '../services/themesService';
 import { LLM_MODELS } from '../services/claude';
 import { generateFullLandingPage, regenerateLandingPageSection, exportLandingPageAsZip, exportLandingPageAsHtml } from '../services/landingPageBuilderService';
 import { saveLandingPage } from '../services/landingPagesService';
+import { fetchTemplates, fetchTemplate, saveTemplate, deleteTemplate } from '../services/lpTemplatesService';
+import { fetchComponents } from '../services/lpComponentsService';
 import PreviewFrame from '../components/LandingPage/PreviewFrame';
 import BuilderCommandPalette from '../components/LandingPage/BuilderCommandPalette';
 import BuilderProgress from '../components/LandingPage/BuilderProgress';
 import SectionVariationPicker from '../components/LandingPage/SectionVariationPicker';
+
+const COMP_PREVIEW = (html) => `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--accent:#C9A962;--bg:#0C0C0E;--surface:#131316;--text:#F5F0E8;--text-muted:rgba(245,240,232,0.5);--border:rgba(245,240,232,0.08);--font-body:'DM Sans',sans-serif;--font-heading:'DM Serif Display',serif}body{background:var(--bg);color:var(--text);font-family:var(--font-body)}</style>
+</head><body>${html}</body></html>`;
 
 export default function LandingPageBuilder() {
     const navigate = useNavigate();
@@ -35,6 +42,18 @@ export default function LandingPageBuilder() {
     const [saveName, setSaveName] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [saveToast, setSaveToast] = useState(null); // { message, id }
+    const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+
+    // Templates modal
+    const [showTemplatesModal, setShowTemplatesModal] = useState(false);
+    const [templates, setTemplates] = useState([]);
+    const [templatesLoading, setTemplatesLoading] = useState(false);
+
+    // Components modal
+    const [showComponentsModal, setShowComponentsModal] = useState(false);
+    const [components, setComponents] = useState([]);
+    const [componentsLoading, setComponentsLoading] = useState(false);
+    const [compCategoryFilter, setCompCategoryFilter] = useState('all');
 
     const dropdownRef = useRef(null);
     const llmDropdownRef = useRef(null);
@@ -70,6 +89,49 @@ export default function LandingPageBuilder() {
             setThemes(data);
             if (data.length > 0) setSelectedThemeId(data[0].id);
         } catch (error) { console.error("Failed to load themes", error); }
+    };
+
+    const openTemplatesModal = async () => {
+        setShowTemplatesModal(true);
+        setTemplatesLoading(true);
+        try { setTemplates(await fetchTemplates()); } catch (e) { console.error(e); }
+        finally { setTemplatesLoading(false); }
+    };
+
+    const handleLoadTemplate = async (templateId) => {
+        try {
+            const tmpl = await fetchTemplate(templateId);
+            if (tmpl.sections_json?.length) {
+                setSections(tmpl.sections_json);
+                if (tmpl.theme_id) setSelectedThemeId(tmpl.theme_id);
+            }
+            setShowTemplatesModal(false);
+        } catch (e) { alert('Erro ao carregar template: ' + e.message); }
+    };
+
+    const handleDeleteTemplate = async (id) => {
+        if (!confirm('Deletar este template?')) return;
+        await deleteTemplate(id);
+        setTemplates(prev => prev.filter(t => t.id !== id));
+    };
+
+    const openComponentsModal = async () => {
+        setShowComponentsModal(true);
+        setComponentsLoading(true);
+        setCompCategoryFilter('all');
+        try { setComponents(await fetchComponents()); } catch (e) { console.error(e); }
+        finally { setComponentsLoading(false); }
+    };
+
+    const handleInsertComponent = (comp) => {
+        const newSection = {
+            id: `comp-${comp.id}-${Date.now()}`,
+            name: comp.name,
+            html: comp.html,
+            order: sections.length,
+        };
+        setSections(prev => [...prev, newSection]);
+        setShowComponentsModal(false);
     };
 
     const handleGenerate = async () => {
@@ -156,8 +218,17 @@ export default function LandingPageBuilder() {
                 modelUsed: selectedModel,
                 sections,
             });
+            if (saveAsTemplate) {
+                await saveTemplate({
+                    name: saveName.trim(),
+                    description: productDescription,
+                    sections,
+                    themeId: selectedThemeId,
+                });
+            }
             setSaveModalOpen(false);
-            setSaveToast({ message: '✅ LP salva na Galeria!', id: saved.id });
+            setSaveAsTemplate(false);
+            setSaveToast({ message: saveAsTemplate ? '✅ LP salva + Template criado!' : '✅ LP salva na Galeria!', id: saved.id });
             setTimeout(() => setSaveToast(null), 5000);
         } catch (err) {
             alert("Erro ao salvar: " + err.message);
@@ -270,6 +341,19 @@ export default function LandingPageBuilder() {
                     )}
                 </div>
 
+                {/* Templates Button */}
+                <button
+                    onClick={openTemplatesModal}
+                    style={{
+                        background: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)',
+                        padding: '0.5rem 0.8rem', fontFamily: 'var(--font-body)', fontSize: '12px', fontWeight: '600',
+                        borderRadius: 'var(--radius-md)', cursor: 'pointer', flexShrink: 0,
+                        display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                >📁 Templates</button>
+
                 {/* Product Input */}
                 <input
                     style={{
@@ -296,6 +380,21 @@ export default function LandingPageBuilder() {
                     onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
                     onClick={handleGenerate}
                 >Construir LP</button>
+
+                {/* Insert Component Button */}
+                {sections.length > 0 && (
+                    <button
+                        onClick={openComponentsModal}
+                        style={{
+                            background: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)',
+                            padding: '0.5rem 0.8rem', fontFamily: 'var(--font-body)', fontSize: '12px', fontWeight: '600',
+                            borderRadius: 'var(--radius-md)', cursor: 'pointer', flexShrink: 0,
+                            display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                    >⊞ Componentes</button>
+                )}
 
                 {/* Save Button */}
                 {sections.length > 0 && (
@@ -406,6 +505,17 @@ export default function LandingPageBuilder() {
                             placeholder="Ex: LP Anjos e Arcanjos na Bíblia"
                             maxLength={120}
                         />
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem', cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={saveAsTemplate}
+                                onChange={e => setSaveAsTemplate(e.target.checked)}
+                                style={{ accentColor: 'var(--accent)', width: '14px', height: '14px' }}
+                            />
+                            <span style={{ fontSize: '12px', color: 'rgba(245,240,232,0.5)' }}>
+                                Salvar também como Template reutilizável
+                            </span>
+                        </label>
                         <div style={{ display: 'flex', gap: '8px' }}>
                             <button onClick={() => setSaveModalOpen(false)} style={{ flex: 1, background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(245,240,232,0.5)', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, fontFamily: 'var(--font-body)', transition: 'all 0.2s' }}>
                                 Cancelar
@@ -413,6 +523,130 @@ export default function LandingPageBuilder() {
                             <button onClick={handleConfirmSave} disabled={isSaving || !saveName.trim()} style={{ flex: 2, background: isSaving || !saveName.trim() ? 'rgba(201,169,98,0.3)' : 'var(--accent)', color: '#0C0C0E', border: 'none', padding: '10px', borderRadius: '6px', cursor: isSaving || !saveName.trim() ? 'default' : 'pointer', fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-body)', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                                 {isSaving ? 'Salvando…' : '☁ Salvar na Galeria'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Templates Modal ── */}
+            {showTemplatesModal && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(12px)', zIndex: 99998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+                    <div style={{ background: '#0e0e11', border: '1px solid rgba(201,169,98,0.2)', borderRadius: '12px', width: '100%', maxWidth: '860px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-body)', boxShadow: '0 32px 80px rgba(0,0,0,0.8)' }}>
+                        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '16px', fontFamily: 'var(--font-heading)', fontWeight: 400 }}>Templates Salvos</h3>
+                                <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>Carregue um layout anterior e continue de onde parou</p>
+                            </div>
+                            <button onClick={() => setShowTemplatesModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>✕</button>
+                        </div>
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem' }}>
+                            {templatesLoading ? (
+                                <div style={{ color: 'var(--text-muted)', padding: '3rem', textAlign: 'center', fontSize: '13px' }}>Carregando templates...</div>
+                            ) : templates.length === 0 ? (
+                                <div style={{ color: 'var(--text-muted)', padding: '3rem', textAlign: 'center', fontSize: '13px' }}>
+                                    <div style={{ fontSize: '28px', marginBottom: '10px' }}>📁</div>
+                                    Nenhum template ainda. Salve uma LP como template para aparecer aqui.
+                                </div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.75rem' }}>
+                                    {templates.map(tmpl => (
+                                        <div key={tmpl.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', transition: 'border-color 0.2s' }}
+                                            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(201,169,98,0.3)'}
+                                            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                                        >
+                                            <div style={{ height: '130px', overflow: 'hidden', background: '#0C0C0E', position: 'relative' }}>
+                                                {tmpl.thumbnail_html ? (
+                                                    <iframe srcDoc={`<!DOCTYPE html><html><head><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box}:root{--accent:#C9A962;--bg:#0C0C0E;--surface:#131316;--text:#F5F0E8;--text-muted:rgba(245,240,232,0.5);--border:rgba(245,240,232,0.08);--font-body:'DM Sans',sans-serif;--font-heading:'DM Serif Display',serif}body{background:var(--bg);color:var(--text);font-family:var(--font-body)}</style></head><body>${tmpl.thumbnail_html}</body></html>`}
+                                                        style={{ width: '200%', height: '260px', transform: 'scale(0.5)', transformOrigin: '0 0', border: 'none', pointerEvents: 'none' }}
+                                                        sandbox="allow-scripts" title={tmpl.name}
+                                                    />
+                                                ) : (
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', fontSize: '28px' }}>📄</div>
+                                                )}
+                                            </div>
+                                            <div style={{ padding: '0.75rem' }}>
+                                                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>{tmpl.name}</div>
+                                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                                                    {new Date(tmpl.created_at).toLocaleDateString('pt-BR')}
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    <button onClick={() => handleLoadTemplate(tmpl.id)} style={{ flex: 1, background: 'var(--accent)', color: '#0C0C0E', border: 'none', padding: '6px', borderRadius: '5px', cursor: 'pointer', fontSize: '11px', fontWeight: 700, fontFamily: 'var(--font-body)' }}>
+                                                        Carregar
+                                                    </button>
+                                                    <button onClick={() => handleDeleteTemplate(tmpl.id)} style={{ background: 'rgba(255,80,80,0.06)', border: '1px solid rgba(255,80,80,0.15)', color: '#ff6b6b', padding: '6px 10px', borderRadius: '5px', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-body)' }}>✕</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Components Picker Modal ── */}
+            {showComponentsModal && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(12px)', zIndex: 99998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+                    <div style={{ background: '#0e0e11', border: '1px solid rgba(201,169,98,0.2)', borderRadius: '12px', width: '100%', maxWidth: '860px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-body)', boxShadow: '0 32px 80px rgba(0,0,0,0.8)' }}>
+                        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '16px', fontFamily: 'var(--font-heading)', fontWeight: 400 }}>Inserir Componente</h3>
+                                <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>Selecione um componente para adicionar à sua LP</p>
+                            </div>
+                            <button onClick={() => setShowComponentsModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>✕</button>
+                        </div>
+                        {/* Category filter */}
+                        <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {['all', ...new Set(components.map(c => c.category))].map(cat => (
+                                <button key={cat}
+                                    onClick={() => setCompCategoryFilter(cat)}
+                                    style={{
+                                        padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 600,
+                                        fontFamily: 'var(--font-body)', cursor: 'pointer', transition: 'all 0.2s',
+                                        background: compCategoryFilter === cat ? 'var(--accent)' : 'var(--surface)',
+                                        color: compCategoryFilter === cat ? '#0C0C0E' : 'var(--text-muted)',
+                                        border: compCategoryFilter === cat ? 'none' : '1px solid var(--border)',
+                                    }}
+                                >{cat === 'all' ? 'Todos' : cat}</button>
+                            ))}
+                        </div>
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem' }}>
+                            {componentsLoading ? (
+                                <div style={{ color: 'var(--text-muted)', padding: '3rem', textAlign: 'center', fontSize: '13px' }}>Carregando componentes...</div>
+                            ) : components.length === 0 ? (
+                                <div style={{ color: 'var(--text-muted)', padding: '3rem', textAlign: 'center', fontSize: '13px' }}>
+                                    <div style={{ fontSize: '28px', marginBottom: '10px' }}>⊞</div>
+                                    Nenhum componente ainda. Crie componentes em <strong style={{ color: 'var(--accent)' }}>Biblioteca de Componentes</strong>.
+                                </div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.75rem' }}>
+                                    {components
+                                        .filter(c => compCategoryFilter === 'all' || c.category === compCategoryFilter)
+                                        .map(comp => (
+                                            <div key={comp.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', transition: 'border-color 0.2s', cursor: 'pointer' }}
+                                                onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(201,169,98,0.4)'}
+                                                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                                                onClick={() => handleInsertComponent(comp)}
+                                            >
+                                                <div style={{ height: '140px', overflow: 'hidden', background: '#0C0C0E', position: 'relative' }}>
+                                                    <iframe srcDoc={COMP_PREVIEW(comp.html)}
+                                                        style={{ width: '200%', height: '280px', transform: 'scale(0.5)', transformOrigin: '0 0', border: 'none', pointerEvents: 'none' }}
+                                                        sandbox="allow-scripts" title={comp.name}
+                                                    />
+                                                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0)', transition: 'background 0.2s' }}
+                                                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(201,169,98,0.12)'; }}
+                                                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0)'; }}
+                                                    />
+                                                </div>
+                                                <div style={{ padding: '0.65rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{comp.name}</span>
+                                                    <span style={{ fontSize: '10px', color: 'var(--accent)', background: 'rgba(201,169,98,0.1)', padding: '2px 7px', borderRadius: '10px' }}>{comp.category}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

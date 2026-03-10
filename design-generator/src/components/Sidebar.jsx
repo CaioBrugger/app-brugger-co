@@ -84,6 +84,18 @@ const pipeline = [
 
 const support = [
     {
+        path: '/components',
+        label: 'Biblioteca',
+        icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <path d="M17.5 14v7M14 17.5h7" />
+            </svg>
+        )
+    },
+    {
         path: '/design',
         label: 'Design Generator',
         icon: (

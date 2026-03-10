@@ -25,6 +25,7 @@ const Price = lazy(() => import('./pages/design-system/components/Price'));
 const Docs = lazy(() => import('./pages/design-system/Docs'));
 const Settings = lazy(() => import('./pages/Settings'));
 const ThemeDetail = lazy(() => import('./pages/ThemeDetail'));
+const ComponentLibrary = lazy(() => import('./pages/ComponentLibrary'));
 
 export default function App() {
     return (
@@ -45,6 +46,7 @@ export default function App() {
                         <Route path="/vitrine" element={<Vitrine />} />
                         <Route path="/settings" element={<Settings />} />
                         <Route path="/themes/:id" element={<ThemeDetail />} />
+                        <Route path="/components" element={<ComponentLibrary />} />
 
                         {/* Design System Routes */}
                         <Route path="/design-system" element={<Overview />} />
