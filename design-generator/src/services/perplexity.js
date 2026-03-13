@@ -1,5 +1,7 @@
+import { buildOpenRouterErrorMessage, getOpenRouterApiKey, getOpenRouterHeaders } from './openrouter';
+
 export async function researchTopic(productDescription) {
-    const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
+    const OPENROUTER_API_KEY = getOpenRouterApiKey();
 
     if (!OPENROUTER_API_KEY) {
         throw new Error('Chave VITE_OPENROUTER_API_KEY não encontrada no .env para o Perplexity.');
@@ -18,12 +20,7 @@ Seja conciso e use bullet points.`;
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-            'HTTP-Referer': 'http://localhost:3000',
-            'X-Title': 'Brugger CO Toolbox'
-        },
+        headers: getOpenRouterHeaders(),
         body: JSON.stringify({
             model: 'perplexity/sonar',
             messages: [
@@ -36,7 +33,7 @@ Seja conciso e use bullet points.`;
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('Perplexity API Error via OpenRouter:', errorData);
-        throw new Error(`Erro na API do Perplexity (OpenRouter): ${response.status} - ${errorData.error?.message || 'Desconhecido'}`);
+        throw new Error(buildOpenRouterErrorMessage(response.status, errorData, 'Perplexity via OpenRouter'));
     }
 
     const data = await response.json();

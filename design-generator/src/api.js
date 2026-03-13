@@ -1,5 +1,5 @@
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const DEFAULT_MODEL = 'gemini-2.5-pro';
 const IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
 

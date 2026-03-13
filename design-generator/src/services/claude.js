@@ -1,4 +1,6 @@
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_CLAUDE_API_KEY;
+import { callGemini } from '../api';
+import { buildOpenRouterErrorMessage, getOpenRouterHeaders } from './openrouter';
+
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4.6';
 
 export const LLM_MODELS = [
@@ -11,12 +13,7 @@ export const LLM_MODELS = [
 export async function callClaude(systemPrompt, userPrompt, model = DEFAULT_MODEL) {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-            'HTTP-Referer': 'http://localhost:3000',
-            'X-Title': 'Brugger CO Toolbox'
-        },
+        headers: getOpenRouterHeaders(),
         body: JSON.stringify({
             model,
             max_tokens: 16384,
@@ -30,7 +27,7 @@ export async function callClaude(systemPrompt, userPrompt, model = DEFAULT_MODEL
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         console.error(`[OpenRouter ${model}] API Error:`, err);
-        throw new Error(err.error?.message || `Erro na API OpenRouter: ${response.status}`);
+        throw new Error(buildOpenRouterErrorMessage(response.status, err));
     }
 
     const data = await response.json();
@@ -62,12 +59,7 @@ export async function callClaudeWithImages(systemPrompt, userPrompt, images = []
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-            'HTTP-Referer': 'http://localhost:3000',
-            'X-Title': 'Brugger CO Toolbox'
-        },
+        headers: getOpenRouterHeaders(),
         body: JSON.stringify({
             model,
             max_tokens: 16384,
@@ -86,7 +78,7 @@ export async function callClaudeWithImages(systemPrompt, userPrompt, images = []
             err = { error: { message: `Status ${response.status}` } };
         }
         console.error(`[OpenRouter Vision ${model}] API Error:`, err);
-        throw new Error(err.error?.message || `Erro na API OpenRouter Vision: ${response.status}`);
+        throw new Error(buildOpenRouterErrorMessage(response.status, err, 'OpenRouter Vision'));
     }
 
     const data = await response.json();
@@ -269,9 +261,21 @@ PRODUCT DESCRIPTION:
 "${productDescription}"
 `;
 
-    return callClaude(systemPrompt,
-        `Generate the COMPLETE 20-section landing page copy as a JSON array. ALL 20 sections are MANDATORY. Do not skip any.`,
-        model
-    );
+    const userPrompt = 'Generate the COMPLETE 20-section landing page copy as a JSON array. ALL 20 sections are MANDATORY. Do not skip any.';
+
+    try {
+        return await callClaude(systemPrompt, userPrompt, model);
+    } catch (error) {
+        const message = error?.message || '';
+
+        if (!message.includes('User not found')) {
+            throw error;
+        }
+
+        console.warn('[LP Builder] OpenRouter indisponivel para copy. Usando fallback via Gemini.');
+
+        const geminiResult = await callGemini(`${systemPrompt}\n\n${userPrompt}`);
+        return JSON.stringify(geminiResult);
+    }
 }
 
