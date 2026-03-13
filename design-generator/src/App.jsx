@@ -23,7 +23,6 @@ const TypographyQuotes = lazy(() => import('./pages/design-system/components/Typ
 const AccordionFaq = lazy(() => import('./pages/design-system/components/AccordionFaq'));
 const Price = lazy(() => import('./pages/design-system/components/Price'));
 const Docs = lazy(() => import('./pages/design-system/Docs'));
-const Settings = lazy(() => import('./pages/Settings'));
 const ThemeDetail = lazy(() => import('./pages/ThemeDetail'));
 const ComponentLibrary = lazy(() => import('./pages/ComponentLibrary'));
 
@@ -44,7 +43,6 @@ export default function App() {
                         <Route path="/themes" element={<Themes />} />
                         <Route path="/order-bumps" element={<OrderBumpsCreator />} />
                         <Route path="/vitrine" element={<Vitrine />} />
-                        <Route path="/settings" element={<Settings />} />
                         <Route path="/themes/:id" element={<ThemeDetail />} />
                         <Route path="/components" element={<ComponentLibrary />} />
 

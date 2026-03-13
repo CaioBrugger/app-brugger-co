@@ -4,10 +4,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PU
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-    console.warn('Supabase: credenciais não configuradas. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no .env');
+    console.error('Supabase: VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY são obrigatórias. Configure no Netlify e faça um novo deploy.');
 }
 
-export const supabase = createClient(
-    supabaseUrl || 'https://placeholder.supabase.co',
-    supabaseAnonKey || 'placeholder'
-);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);

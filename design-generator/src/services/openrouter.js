@@ -1,8 +1,6 @@
 const OPENROUTER_API_KEY =
     import.meta.env.VITE_OPENROUTER_API_KEY ||
-    import.meta.env.NEXT_PUBLIC_OPENROUTER_API_KEY ||
-    import.meta.env.VITE_CLAUDE_API_KEY ||
-    import.meta.env.NEXT_PUBLIC_CLAUDE_API_KEY;
+    import.meta.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
 
 function getAppOrigin() {
     if (typeof window !== 'undefined' && window.location?.origin) {
@@ -15,7 +13,7 @@ function getAppOrigin() {
 export function getOpenRouterApiKey() {
     if (!OPENROUTER_API_KEY) {
         throw new Error(
-            'OpenRouter não configurado no frontend. Defina VITE_OPENROUTER_API_KEY (ou VITE_CLAUDE_API_KEY legado) no ambiente de build e faça um novo deploy.'
+            'OpenRouter não configurado. Defina VITE_OPENROUTER_API_KEY no Netlify e faça um novo deploy.'
         );
     }
 

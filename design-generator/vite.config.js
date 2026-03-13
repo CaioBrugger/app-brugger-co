@@ -12,16 +12,6 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     open: true,
-    proxy: {
-      '/api/claude': {
-        target: 'https://api.anthropic.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/claude/, ''),
-        headers: {
-          'anthropic-dangerous-direct-browser-access': 'true'
-        }
-      }
-    }
   },
   assetsInclude: ['**/*.md']
 });

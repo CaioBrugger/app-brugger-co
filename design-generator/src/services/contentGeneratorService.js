@@ -9,7 +9,8 @@
  *   - extractImageBlocks(markdown) → [{ index, prompt, style, aspect, placeholder }]
  */
 
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_CLAUDE_API_KEY;
+import { getOpenRouterHeaders, buildOpenRouterErrorMessage } from './openrouter';
+
 const CONTENT_MODEL = 'anthropic/claude-sonnet-4.6';
 
 /**
@@ -24,12 +25,7 @@ export async function generateContent(systemPrompt, userPrompt, signal) {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         signal,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-            'HTTP-Referer': 'http://localhost:3000',
-            'X-Title': 'Brugger CO Toolbox',
-        },
+        headers: getOpenRouterHeaders(),
         body: JSON.stringify({
             model: CONTENT_MODEL,
             max_tokens: 16384,
@@ -43,7 +39,7 @@ export async function generateContent(systemPrompt, userPrompt, signal) {
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         console.error('[ContentGenerator] API Error:', err);
-        throw new Error(err.error?.message || `Erro na geração de conteúdo: ${response.status}`);
+        throw new Error(buildOpenRouterErrorMessage(response.status, err, 'ContentGenerator'));
     }
 
     const data = await response.json();
